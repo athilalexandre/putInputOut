@@ -141,7 +141,7 @@ export default function Home() {
   // Tocar link rápido
   const playQuickLink = async () => {
     if (!quickLink.trim()) {
-      setStatus({ type: 'error', message: 'Cole um link no campo "Link Rápido"' })
+      setStatus({ type: 'error', message: 'Cole um link no campo &quot;Link Rápido&quot;' })
       return
     }
 
@@ -303,8 +303,8 @@ export default function Home() {
 
           <div className="mt-4 p-3 bg-discord-darker rounded-lg border border-gray-600">
             <p className="text-sm text-gray-300">
-              <strong>💡 Como obter IDs:</strong> Ative "Developer Mode" no Discord (Configurações → Avançado), 
-              clique com botão direito no servidor/canal → "Copiar ID"
+              <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
+              clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
             </p>
           </div>
         </div>
