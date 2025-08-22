@@ -20,9 +20,9 @@ const handler = NextAuth({
         token.refreshToken = account.refresh_token || ''
       }
       if (profile) {
-        token.discordId = profile.id || ''
-        token.username = profile.username || ''
-        token.avatar = profile.avatar || ''
+        token.discordId = (profile as any).id || ''
+        token.username = (profile as any).username || ''
+        token.avatar = (profile as any).avatar || ''
       }
       return token
     },
