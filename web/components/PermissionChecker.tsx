@@ -31,16 +31,6 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
   const [isChecking, setIsChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!session?.accessToken || !guildId || !voiceChannelId) {
-      setHasPermission(false)
-      setIsChecking(false)
-      return
-    }
-
-    checkPermissions()
-  }, [session, guildId, voiceChannelId, checkPermissions])
-
   const checkPermissions = useCallback(async () => {
     try {
       setIsChecking(true)
@@ -78,6 +68,16 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
       setIsChecking(false)
     }
   }, [guildId, voiceChannelId, session?.accessToken])
+
+  useEffect(() => {
+    if (!session?.accessToken || !guildId || !voiceChannelId) {
+      setHasPermission(false)
+      setIsChecking(false)
+      return
+    }
+
+    checkPermissions()
+  }, [session, guildId, voiceChannelId, checkPermissions])
 
   if (isChecking) {
     return (
