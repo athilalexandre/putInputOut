@@ -218,6 +218,16 @@ app.post('/play', async (req, res) => {
       return res.status(400).json({ error: 'Parâmetros obrigatórios: guildId, voiceChannelId, soundUrl' });
     }
 
+    // Modo de desenvolvimento - simular resposta sem conectar ao Discord
+    if (!process.env.DISCORD_TOKEN || process.env.DISCORD_TOKEN === 'seu_discord_bot_token_aqui') {
+      console.log('🔧 Modo de desenvolvimento - simulando resposta');
+      return res.json({ 
+        ok: true, 
+        source: 'DEV_MODE',
+        message: 'Modo de desenvolvimento - áudio simulado com sucesso'
+      });
+    }
+
     // Conectar ao canal de voz
     const { connection, player } = await connectToVoiceChannel(guildId, voiceChannelId);
 
@@ -318,12 +328,25 @@ client.once('ready', () => {
   console.log(`📡 Servidor Express rodando na porta ${PORT}`);
 });
 
-// Login do bot
-client.login(process.env.DISCORD_TOKEN);
+// Login do bot (opcional para desenvolvimento)
+if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN !== 'seu_discord_bot_token_aqui') {
+  client.login(process.env.DISCORD_TOKEN);
+} else {
+  console.log('⚠️ Token do Discord não configurado - modo de desenvolvimento');
+}
 
 // Iniciar servidor Express
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Servidor Express iniciado na porta ${PORT}`);
+});
+
+// Manter o processo rodando
+process.on('SIGINT', () => {
+  console.log('🛑 Encerrando servidor...');
+  server.close(() => {
+    console.log('✅ Servidor encerrado');
+    process.exit(0);
+  });
 });
 
 // Tratamento de erros não capturados

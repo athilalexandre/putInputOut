@@ -1,0 +1,18 @@
+# Token do Bot Discord
+DISCORD_TOKEN=seu_discord_bot_token_aqui
+
+# Chave secreta compartilhada (deve ser igual ao SHARED_SECRET do web)
+SHARED_SECRET=chave_secreta_123
+
+# Porta do servidor Express
+PORT=3001
+
+# Origem permitida para CORS
+CORS_ORIGIN=http://localhost:3000
+
+# Configurações do Spotify (opcional)
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+
+# Qualidade do áudio do YouTube
+YOUTUBE_AUDIO_QUALITY=highestaudio
