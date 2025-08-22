@@ -20,7 +20,7 @@ interface PlayResponse {
 }
 
 export default function Home() {
-  const { data: session, status } = useSession()
+  const { data: session, status: authStatus } = useSession()
   const router = useRouter()
 
   // Estados para configuração do Discord
@@ -41,10 +41,10 @@ export default function Home() {
 
   // Verificar autenticação
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authStatus === 'unauthenticated') {
       router.push('/auth/signin')
     }
-  }, [status, router])
+  }, [authStatus, router])
 
   // Carregar configurações do localStorage
   useEffect(() => {
@@ -222,7 +222,7 @@ export default function Home() {
   }, [status])
 
   // Loading state
-  if (status === 'loading') {
+  if (authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-discord-darker flex items-center justify-center">
         <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-discord-blurple"></div>
@@ -231,7 +231,7 @@ export default function Home() {
   }
 
   // Não autenticado
-  if (status === 'unauthenticated') {
+  if (authStatus === 'unauthenticated') {
     return null
   }
 
