@@ -16,13 +16,13 @@ const handler = NextAuth({
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account) {
-        token.accessToken = account.access_token
-        token.refreshToken = account.refresh_token
+        token.accessToken = account.access_token || ''
+        token.refreshToken = account.refresh_token || ''
       }
       if (profile) {
-        token.discordId = profile.id
-        token.username = profile.username
-        token.avatar = profile.avatar
+        token.discordId = profile.id || ''
+        token.username = profile.username || ''
+        token.avatar = profile.avatar || ''
       }
       return token
     },

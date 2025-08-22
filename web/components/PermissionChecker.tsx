@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 
 interface PermissionCheckerProps {
@@ -39,9 +39,9 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
     }
 
     checkPermissions()
-  }, [session, guildId, voiceChannelId])
+  }, [session, guildId, voiceChannelId, checkPermissions])
 
-  const checkPermissions = async () => {
+  const checkPermissions = useCallback(async () => {
     try {
       setIsChecking(true)
       setError(null)
@@ -77,7 +77,7 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
     } finally {
       setIsChecking(false)
     }
-  }
+  }, [guildId, voiceChannelId, session?.accessToken])
 
   if (isChecking) {
     return (
