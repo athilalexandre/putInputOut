@@ -1,4 +1,4 @@
-# Soundboard Discord
+# 🎵 PutIn PutOut
 
 Um soundboard completo para Discord com interface web moderna e bot inteligente que suporta áudio direto, YouTube e Spotify.
 
@@ -54,7 +54,16 @@ putInputOut/
 2. Clique com botão direito no servidor → "Copiar ID" (Guild ID)
 3. Clique com botão direito no canal de voz → "Copiar ID" (Voice Channel ID)
 
-### 2. Credenciais Spotify (Opcional, mas Recomendado)
+### 2. Configuração OAuth2 Discord (Para Login)
+
+#### Criar Aplicação OAuth2
+1. Acesse [Discord Developer Portal](https://discord.com/developers/applications)
+2. Vá em **"OAuth2"** → **"General"**
+3. Adicione **Redirect URI**: `https://seu-site.vercel.app/api/auth/callback/discord`
+4. Copie **Client ID** e **Client Secret**
+5. **Importante**: Use a mesma aplicação do bot ou crie uma separada
+
+### 3. Credenciais Spotify (Opcional, mas Recomendado)
 
 #### Criar App Spotify
 1. Acesse [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
@@ -63,7 +72,7 @@ putInputOut/
 4. Copie `Client ID` e `Client Secret`
 5. **Nota**: Usamos Client Credentials Flow (apenas metadados, sem login de usuário)
 
-### 3. Variáveis de Ambiente
+### 4. Variáveis de Ambiente
 
 #### Bot (.env)
 ```bash
@@ -84,8 +93,27 @@ YOUTUBE_AUDIO_QUALITY=highestaudio
 ```bash
 BOT_ENDPOINT=https://seu-bot.railway.app
 SHARED_SECRET=mesma_chave_secreta_do_bot
-NEXT_PUBLIC_APP_NAME=Soundboard Discord
+NEXT_PUBLIC_APP_NAME=PutIn PutOut
+
+# Discord OAuth2 (para login)
+DISCORD_CLIENT_ID=seu_discord_client_id
+DISCORD_CLIENT_SECRET=seu_discord_client_secret
+
+# Bot Token (para verificar permissões)
+DISCORD_BOT_TOKEN=seu_discord_bot_token
+
+# NextAuth
+NEXTAUTH_URL=https://seu-site.vercel.app
+NEXTAUTH_SECRET=chave_secreta_para_nextauth
 ```
+
+### 5. Configuração de Segurança
+
+#### Permissões Necessárias
+- **Usuário deve ser membro do servidor**
+- **Usuário deve ter permissão para ver o canal de voz**
+- **Usuário deve ter permissão para conectar ao canal (se não for admin)**
+- **Admins têm acesso total automaticamente**
 
 ## 🚀 Deploy
 
@@ -116,10 +144,18 @@ NEXT_PUBLIC_APP_NAME=Soundboard Discord
 ## 🎵 Como Usar
 
 ### Interface Web
-1. Configure `Guild ID` e `Voice Channel ID`
-2. Ajuste volume (0-1)
-3. Clique em "Test Connection" para verificar
-4. Use botões de sons pré-definidos ou cole links no "Link Rápido"
+1. **Faça login com Discord** (OAuth2)
+2. Configure `Guild ID` e `Voice Channel ID`
+3. **Sistema verifica automaticamente suas permissões**
+4. Ajuste volume (0-1)
+5. Clique em "Test Connection" para verificar
+6. Use botões de sons pré-definidos ou cole links no "Link Rápido"
+
+### Sistema de Autenticação
+- **Login obrigatório** via Discord OAuth2
+- **Verificação automática** de permissões no servidor
+- **Controle de acesso** baseado em roles e permissões
+- **Logout** disponível no cabeçalho
 
 ### Tipos de Links Suportados
 - **Áudio Direto**: `https://exemplo.com/som.mp3`

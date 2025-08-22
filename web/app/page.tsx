@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import sounds from '../sounds.json'
+import PermissionChecker from '../components/PermissionChecker'
 
 interface Sound {
   name: string
@@ -17,6 +20,9 @@ interface PlayResponse {
 }
 
 export default function Home() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
   // Estados para configuração do Discord
   const [guildId, setGuildId] = useState('')
   const [voiceChannelId, setVoiceChannelId] = useState('')
@@ -32,6 +38,13 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle')
+
+  // Verificar autenticação
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/signin')
+    }
+  }, [status, router])
 
   // Carregar configurações do localStorage
   useEffect(() => {
@@ -59,14 +72,14 @@ export default function Home() {
     }
 
     setConnectionStatus('testing')
-    setStatus({ type: 'info', message: 'Testando conexão...' })
+    setStatus({ type: 'info', message: '🎵 Testando conexão e tocando música de boas-vindas...' })
 
     try {
       const response = await fetch('/api/play', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          soundUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
+          soundUrl: 'https://www.youtube.com/watch?v=QUlMp1X1Gtk',
           guildId,
           voiceChannelId,
           volume: 0.5
@@ -75,7 +88,7 @@ export default function Home() {
 
       if (response.ok) {
         setConnectionStatus('connected')
-        setStatus({ type: 'success', message: '✅ Conexão testada com sucesso! Bot conectado ao canal de voz.' })
+        setStatus({ type: 'success', message: '✅ Conexão testada com sucesso! 🎵 Tocando música de boas-vindas PutIn PutOut!' })
       } else {
         const error = await response.json()
         setConnectionStatus('error')
@@ -208,172 +221,262 @@ export default function Home() {
     }
   }, [status])
 
+  // Loading state
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-discord-darker flex items-center justify-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-discord-blurple"></div>
+      </div>
+    )
+  }
+
+  // Não autenticado
+  if (status === 'unauthenticated') {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-discord-darker text-white">
       {/* Header */}
       <header className="bg-discord-dark border-b border-gray-700">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-center text-discord-blurple">
-            🎵 Soundboard Discord
-          </h1>
-          <p className="text-center text-gray-300 mt-2">
-            Interface web para tocar sons no Discord com suporte a YouTube e Spotify
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-discord-blurple">
+                🎵 PutIn PutOut
+              </h1>
+              <p className="text-gray-300 mt-2">
+                Interface web para tocar sons no Discord com suporte a YouTube e Spotify
+              </p>
+            </div>
+            
+            {/* User Info */}
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm text-gray-300">Logado como</p>
+                <p className="font-medium text-white">{session?.user?.username}</p>
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                className="bg-discord-red hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Configuração do Discord */}
-        <div className="card mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-discord-blurple">
-            ⚙️ Configuração do Discord
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
-              <input
-                type="text"
-                value={guildId}
-                onChange={(e) => {
-                  setGuildId(e.target.value)
-                  saveToLocalStorage('guildId', e.target.value)
-                }}
-                placeholder="123456789012345678"
-                className="input-field w-full"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
-              <input
-                type="text"
-                value={voiceChannelId}
-                onChange={(e) => {
-                  setVoiceChannelId(e.target.value)
-                  saveToLocalStorage('voiceChannelId', e.target.value)
-                }}
-                placeholder="123456789012345678"
-                className="input-field w-full"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Volume (0-1)</label>
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.1"
-                value={volume}
-                onChange={(e) => {
-                  const vol = parseFloat(e.target.value)
-                  setVolume(vol)
-                  saveToLocalStorage('volume', vol)
-                }}
-                className="input-field w-full"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={testConnection}
-              disabled={!guildId || !voiceChannelId || connectionStatus === 'testing'}
-              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {connectionStatus === 'testing' ? '🔄 Testando...' : '🔗 Test Connection'}
-            </button>
-            
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${
-                connectionStatus === 'connected' ? 'bg-discord-green' :
-                connectionStatus === 'error' ? 'bg-discord-red' :
-                connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
-                'bg-gray-500'
-              }`} />
-              <span className="text-sm text-gray-300">
-                {connectionStatus === 'connected' ? 'Conectado' :
-                 connectionStatus === 'error' ? 'Erro' :
-                 connectionStatus === 'testing' ? 'Testando...' :
-                 'Desconectado'}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-4 p-3 bg-discord-darker rounded-lg border border-gray-600">
-            <p className="text-sm text-gray-300">
-              <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
-              clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
-            </p>
-          </div>
-        </div>
-
-        {/* Link Rápido */}
-        <div className="card mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-discord-green">
-            🚀 Link Rápido
-          </h2>
-          
-          <div className="flex gap-4">
-            <input
-              type="url"
-              value={quickLink}
-              onChange={(e) => setQuickLink(e.target.value)}
-              placeholder="Cole aqui links de mp3, YouTube ou Spotify..."
-              className="input-field flex-1"
-            />
-            <button
-              onClick={playQuickLink}
-              disabled={!quickLink.trim() || isLoading || !guildId || !voiceChannelId}
-              className="btn-success disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? '🔄 Processando...' : '▶️ Tocar Link'}
-            </button>
-          </div>
-          
-          <div className="mt-3 p-3 bg-discord-darker rounded-lg border border-gray-600">
-            <p className="text-sm text-gray-300">
-              <strong>📋 Suportado:</strong> Links diretos (mp3/ogg/wav), YouTube (youtube.com/youtu.be), 
-              Spotify tracks (open.spotify.com/track). Para Spotify sem preview, o sistema busca automaticamente no YouTube.
-            </p>
-          </div>
-        </div>
-
-        {/* Busca */}
-        <div className="mb-6">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="🔍 Buscar sons..."
-            className="input-field w-full max-w-md"
-          />
-        </div>
-
-        {/* Biblioteca de Sons */}
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4 text-discord-fuchsia">
-            📚 Biblioteca de Sons ({filteredSounds.length})
-          </h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredSounds.map((sound, index) => (
-              <button
-                key={index}
-                onClick={() => playSound(sound.url, sound.name)}
-                disabled={isLoading || !guildId || !voiceChannelId}
-                className="btn-secondary text-left h-24 flex flex-col justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
-              >
-                <div className="font-medium truncate">{sound.name}</div>
-                <div className="text-xs text-gray-400 truncate mt-1">
-                  {sound.url.includes('youtube.com') || sound.url.includes('youtu.be') ? '🎥 YouTube' :
-                   sound.url.includes('open.spotify.com') ? '🎵 Spotify' : '🔊 Áudio Direto'}
+        {guildId && voiceChannelId ? (
+          <PermissionChecker guildId={guildId} voiceChannelId={voiceChannelId}>
+            {/* Configuração do Discord */}
+            <div className="card mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-discord-blurple">
+                ⚙️ Configuração do Discord - PutIn PutOut
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
+                  <input
+                    type="text"
+                    value={guildId}
+                    onChange={(e) => {
+                      setGuildId(e.target.value)
+                      saveToLocalStorage('guildId', e.target.value)
+                    }}
+                    placeholder="123456789012345678"
+                    className="input-field w-full"
+                  />
                 </div>
-              </button>
-            ))}
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
+                  <input
+                    type="text"
+                    value={voiceChannelId}
+                    onChange={(e) => {
+                      setVoiceChannelId(e.target.value)
+                      saveToLocalStorage('voiceChannelId', e.target.value)
+                    }}
+                    placeholder="123456789012345678"
+                    className="input-field w-full"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Volume (0-1)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={volume}
+                    onChange={(e) => {
+                      const vol = parseFloat(e.target.value)
+                      setVolume(vol)
+                      saveToLocalStorage('volume', vol)
+                    }}
+                    className="input-field w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={testConnection}
+                  disabled={!guildId || !voiceChannelId || connectionStatus === 'testing'}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {connectionStatus === 'testing' ? '🔄 Testando...' : '🔗 Test Connection'}
+                </button>
+                
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${
+                    connectionStatus === 'connected' ? 'bg-discord-green' :
+                    connectionStatus === 'error' ? 'bg-discord-red' :
+                    connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
+                    'bg-gray-500'
+                  }`} />
+                  <span className="text-sm text-gray-300">
+                    {connectionStatus === 'connected' ? 'Conectado' :
+                     connectionStatus === 'error' ? 'Erro' :
+                     connectionStatus === 'testing' ? 'Testando...' :
+                     'Desconectado'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-discord-darker rounded-lg border border-gray-600">
+                <p className="text-sm text-gray-300">
+                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
+                  clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
+                </p>
+              </div>
+            </div>
+
+            {/* Link Rápido */}
+            <div className="card mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-discord-green">
+                🚀 Link Rápido
+              </h2>
+              
+              <div className="flex gap-4">
+                <input
+                  type="url"
+                  value={quickLink}
+                  onChange={(e) => setQuickLink(e.target.value)}
+                  placeholder="Cole aqui links de mp3, YouTube ou Spotify..."
+                  className="input-field flex-1"
+                />
+                <button
+                  onClick={playQuickLink}
+                  disabled={!quickLink.trim() || isLoading || !guildId || !voiceChannelId}
+                  className="btn-success disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? '🔄 Processando...' : '▶️ Tocar Link'}
+                </button>
+              </div>
+              
+              <div className="mt-3 p-3 bg-discord-darker rounded-lg border border-gray-600">
+                <p className="text-sm text-gray-300">
+                  <strong>📋 Suportado:</strong> Links diretos (mp3/ogg/wav), YouTube (youtube.com/youtu.be), 
+                  Spotify tracks (open.spotify.com/track). Para Spotify sem preview, o sistema busca automaticamente no YouTube.
+                </p>
+              </div>
+            </div>
+
+            {/* Busca */}
+            <div className="mb-6">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="🔍 Buscar sons..."
+                className="input-field w-full max-w-md"
+              />
+            </div>
+
+            {/* Biblioteca de Sons */}
+            <div className="card">
+              <h2 className="text-xl font-semibold mb-4 text-discord-fuchsia">
+                📚 Biblioteca de Sons ({filteredSounds.length})
+              </h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredSounds.map((sound, index) => (
+                  <button
+                    key={index}
+                    onClick={() => playSound(sound.url, sound.name)}
+                    disabled={isLoading || !guildId || !voiceChannelId}
+                    className="btn-secondary text-left h-24 flex flex-col justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
+                  >
+                    <div className="font-medium truncate">{sound.name}</div>
+                    <div className="text-xs text-gray-400 truncate mt-1">
+                      {sound.url.includes('youtube.com') || sound.url.includes('youtu.be') ? '🎥 YouTube' :
+                       sound.url.includes('open.spotify.com') ? '🎵 Spotify' : '🔊 Áudio Direto'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </PermissionChecker>
+        ) : (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🎵</div>
+            <h2 className="text-2xl font-semibold text-discord-blurple mb-4">
+              Configure o Discord
+            </h2>
+            <p className="text-gray-300 mb-8 max-w-md mx-auto">
+              Para começar a usar o PutIn PutOut, configure o Guild ID e Voice Channel ID abaixo
+            </p>
+            
+            {/* Configuração inicial */}
+            <div className="card max-w-2xl mx-auto">
+              <h3 className="text-xl font-semibold mb-4 text-discord-blurple">
+                ⚙️ Configuração Inicial
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
+                  <input
+                    type="text"
+                    value={guildId}
+                    onChange={(e) => {
+                      setGuildId(e.target.value)
+                      saveToLocalStorage('guildId', e.target.value)
+                    }}
+                    placeholder="123456789012345678"
+                    className="input-field w-full"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
+                  <input
+                    type="text"
+                    value={voiceChannelId}
+                    onChange={(e) => {
+                      setVoiceChannelId(e.target.value)
+                      saveToLocalStorage('voiceChannelId', e.target.value)
+                    }}
+                    placeholder="123456789012345678"
+                    className="input-field w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-discord-darker rounded-lg border border-gray-600">
+                <p className="text-sm text-gray-300">
+                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
+                  clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Status/Toast */}
         {status && (

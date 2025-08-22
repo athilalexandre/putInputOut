@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_APP_NAME || 'Soundboard Discord',
+  title: process.env.NEXT_PUBLIC_APP_NAME || 'PutIn PutOut',
   description: 'Interface web para soundboard Discord com suporte a YouTube e Spotify',
 }
 
