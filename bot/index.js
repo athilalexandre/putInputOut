@@ -12,6 +12,9 @@ import { Readable } from 'stream';
 // Carregar variáveis de ambiente
 dotenv.config();
 
+// Log para verificar se o código atualizado foi aplicado
+console.log('🔄 Bot iniciado com código atualizado - sem @discordjs/opus');
+
 // Configuração do bot Discord
 const client = new Client({
   intents: [
