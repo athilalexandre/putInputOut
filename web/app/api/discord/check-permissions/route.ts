@@ -11,12 +11,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar se o usuário é membro do servidor
-    const memberResponse = await fetch(
-      `https://discord.com/api/v10/guilds/${guildId}/members/@me`,
+    // Primeiro, obter informações do usuário através do token OAuth
+    const userResponse = await fetch(
+      `https://discord.com/api/v10/users/@me`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    )
+
+    if (!userResponse.ok) {
+      return NextResponse.json(
+        { 
+          hasPermission: false, 
+          message: 'Token de acesso inválido' 
+        },
+        { status: 200 }
+      )
+    }
+
+    const user = await userResponse.json()
+
+    // Verificar se o usuário é membro do servidor (usando bot token)
+    const memberResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/members/${user.id}`,
+      {
+        headers: {
+          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
         },
       }
     )
@@ -66,9 +88,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar permissões do usuário
-    const permissionsResponse = await fetch(
-      `https://discord.com/api/v10/guilds/${guildId}/members/@me`,
+    // Verificar se é dono do servidor ou admin
+    const guildResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}`,
       {
         headers: {
           Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
@@ -76,39 +98,47 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    if (!permissionsResponse.ok) {
+    let isOwner = false
+    if (guildResponse.ok) {
+      const guild = await guildResponse.json()
+      isOwner = guild.owner_id === user.id
+    }
+
+    // Verificar se tem permissão de administrador
+    const userPermissions = parseInt(member.permissions || '0')
+    const isAdmin = (userPermissions & 0x00000008) !== 0 // ADMINISTRATOR permission
+
+    // Se for owner ou admin, permitir acesso
+    if (isOwner || isAdmin) {
       return NextResponse.json(
         { 
-          hasPermission: false, 
-          message: 'Erro ao verificar permissões' 
+          hasPermission: true,
+          message: 'Acesso permitido (Admin)',
+          user: {
+            id: user.id,
+            username: user.username,
+            avatar: user.avatar,
+            isAdmin: true
+          }
         },
         { status: 200 }
       )
     }
 
-    const userMember = await permissionsResponse.json()
-
-    // Verificar se é admin ou tem permissões adequadas
-    const hasAdminRole = userMember.roles.some((roleId: string) => {
-      // Verificar se tem role de admin (você pode personalizar isso)
-      return roleId === guildId // Owner role
-    })
-
     // Verificar permissões específicas do canal
-    const userPermissions = parseInt(userMember.permissions || '0')
-    const canConnect = (userPermissions & 0x00000020) !== 0 // CONNECT permission
+    const canConnect = (userPermissions & 0x00100000) !== 0 // CONNECT permission
     const canViewChannel = (userPermissions & 0x00000400) !== 0 // VIEW_CHANNEL permission
 
-    if (hasAdminRole || (canConnect && canViewChannel)) {
+    if (canConnect && canViewChannel) {
       return NextResponse.json(
         { 
           hasPermission: true,
           message: 'Acesso permitido',
           user: {
-            id: userMember.user.id,
-            username: userMember.user.username,
-            avatar: userMember.user.avatar,
-            isAdmin: hasAdminRole
+            id: user.id,
+            username: user.username,
+            avatar: user.avatar,
+            isAdmin: false
           }
         },
         { status: 200 }
