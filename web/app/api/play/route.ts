@@ -3,15 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 API /play chamada')
-    
+
     const body = await request.json()
-    console.log('📦 Dados recebidos:', { 
-      soundUrl: body.soundUrl, 
-      guildId: body.guildId, 
-      voiceChannelId: body.voiceChannelId, 
-      volume: body.volume 
+    console.log('📦 Dados recebidos:', {
+      soundUrl: body.soundUrl,
+      guildId: body.guildId,
+      voiceChannelId: body.voiceChannelId,
+      volume: body.volume
     })
-    
+
     const { soundUrl, guildId, voiceChannelId, volume } = body
 
     // Validação dos parâmetros
@@ -31,16 +31,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Modo de desenvolvimento - simular resposta sem bot
-    console.log('🔧 Modo de desenvolvimento - simulando resposta do bot')
-    
-    // Simular delay de processamento
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
+    const botEndpoint = process.env.BOT_ENDPOINT || 'http://localhost:3001'
+    const secret = process.env.SHARED_SECRET || 'chave_secreta_123'
+
+    console.log(`🔗 Chamando bot em: ${botEndpoint}/play`)
+
+    const botResponse = await fetch(`${botEndpoint}/play`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
+      body: JSON.stringify({
+        soundUrl,
+        guildId,
+        voiceChannelId,
+        volume: volume || 1,
+        secret
+      })
+    })
+
+    if (!botResponse.ok) {
+      const errorData = await botResponse.json()
+      console.error('❌ Erro na resposta do bot:', errorData)
+      return NextResponse.json(
+        { error: errorData.error || 'O bot não conseguiu processar o áudio' },
+        { status: botResponse.status }
+      )
+    }
+
+    const result = await botResponse.json()
+    console.log('✅ Resposta do bot:', result)
+
     return NextResponse.json({
       ok: true,
-      source: 'DEV_MODE',
-      message: 'Modo de desenvolvimento - áudio simulado com sucesso'
+      source: result.source,
+      message: result.message || 'Som enviado com sucesso'
     })
 
   } catch (error) {

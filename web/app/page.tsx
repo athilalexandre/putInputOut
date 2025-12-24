@@ -67,7 +67,11 @@ export default function Home() {
   const fetchSounds = async () => {
     try {
       const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds`)
+      const response = await fetch(`${botEndpoint}/api/sounds`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      })
       if (response.ok) {
         const data = await response.json()
         setSoundList(data)
@@ -86,7 +90,10 @@ export default function Home() {
       const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
       const response = await fetch(`${botEndpoint}/api/sounds/update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify({
           url,
           newName,
