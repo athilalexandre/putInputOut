@@ -399,6 +399,13 @@ export default function Home() {
                               'Status: Offline'}
                       </span>
                     </div>
+
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[9px] text-discord-grayLighter uppercase font-bold mb-1 opacity-50">Bot Endpoint (Vercel):</p>
+                      <code className="text-[10px] text-discord-blurple block truncate bg-black/20 p-1.5 rounded-lg border border-discord-blurple/20">
+                        {process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
+                      </code>
+                    </div>
                   </div>
                 </div>
 
