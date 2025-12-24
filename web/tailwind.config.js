@@ -16,8 +16,10 @@ module.exports = {
           red: '#ED4245',
           white: '#FFFFFF',
           black: '#000000',
-          dark: '#2C2F33',
-          darker: '#23272A',
+          dark: '#2B2D31',
+          darker: '#1E1F22',
+          grayDark: '#313338',
+          grayLighter: '#949BA4',
         }
       },
       animation: {
