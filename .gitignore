@@ -47,3 +47,13 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# Bot Dumps and Logs
+bot/*.js.dump
+bot/*-base.js
+bot/*.log
+bot/dumps/
+node_modules/
+**/node_modules/
+.env
+**/.env
