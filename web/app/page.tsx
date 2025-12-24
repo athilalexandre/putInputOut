@@ -51,10 +51,10 @@ export default function Home() {
 
   // Carregar configurações do localStorage
   useEffect(() => {
-    const savedGuildId = localStorage.getItem('discord_guildId')
-    const savedVoiceChannelId = localStorage.getItem('discord_voiceChannelId')
-    const savedVolume = localStorage.getItem('discord_volume')
-    const savedQuickLink = localStorage.getItem('discord_quickLink')
+    const savedGuildId = localStorage.getItem('guildId')
+    const savedVoiceChannelId = localStorage.getItem('voiceChannelId')
+    const savedVolume = localStorage.getItem('volume')
+    const savedQuickLink = localStorage.getItem('quickLink')
 
     if (savedGuildId) setGuildId(savedGuildId)
     if (savedVoiceChannelId) setVoiceChannelId(savedVoiceChannelId)
@@ -96,17 +96,17 @@ export default function Home() {
         },
         body: JSON.stringify({
           url,
-          newName,
-          secret: 'chave_secreta_123'
+          newName
         })
       })
 
       if (response.ok) {
+        setEditingIndex(null)
         setStatus({ type: 'success', message: '✅ Nome atualizado com sucesso!' })
         fetchSounds() // Recarregar lista
-        setEditingIndex(null)
       } else {
-        setStatus({ type: 'error', message: '❌ Erro ao atualizar nome.' })
+        const errorData = await response.json()
+        setStatus({ type: 'error', message: `❌ Erro ao atualizar nome: ${errorData.error || 'Erro desconhecido'}` })
       }
     } catch (err) {
       setStatus({ type: 'error', message: '❌ Erro de conexão com o bot.' })
@@ -290,29 +290,40 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-discord-darker text-white">
+    <div className="min-h-screen bg-discord-darker text-white font-['Outfit']">
       {/* Header */}
-      <header className="bg-discord-dark border-b border-gray-700">
-        <div className="container mx-auto px-4 py-6">
+      <header className="bg-discord-dark border-b border-white/5 sticky top-0 z-40 backdrop-blur-md bg-opacity-80">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-discord-blurple">
-                🎵 PutIn PutOut
-              </h1>
-              <p className="text-gray-300 mt-2">
-                Interface web para tocar sons no Discord com suporte a YouTube e Spotify
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="bg-discord-blurple p-2 rounded-xl shadow-lg shadow-indigo-500/20">
+                <span className="text-2xl">🎵</span>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                  PutIn PutOut
+                </h1>
+                <p className="text-[11px] text-discord-grayLighter uppercase tracking-widest font-semibold">
+                  Premium Soundboard
+                </p>
+              </div>
             </div>
 
             {/* User Info */}
             <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm text-gray-300">Logado como</p>
-                <p className="font-medium text-white">{session?.user?.username}</p>
+              <div className="text-right hidden sm:block">
+                <p className="text-[10px] text-discord-grayLighter uppercase font-bold">Logado como</p>
+                <p className="text-sm font-semibold text-white">{session?.user?.username}</p>
               </div>
+              <img
+                src={`https://cdn.discordapp.com/avatars/${session?.user?.discordId}/${session?.user?.avatar}.png`}
+                alt=""
+                className="w-8 h-8 rounded-full border border-white/10"
+                onError={(e) => (e.currentTarget.src = 'https://cdn.discordapp.com/embed/avatars/0.png')}
+              />
               <button
                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                className="bg-discord-red hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors"
+                className="btn-secondary !py-1.5 !px-3 !text-xs !bg-discord-red/10 !text-discord-red !border-discord-red/20 hover:!bg-discord-red hover:!text-white"
               >
                 Sair
               </button>
@@ -321,213 +332,227 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
         {guildId && voiceChannelId ? (
           <PermissionChecker guildId={guildId} voiceChannelId={voiceChannelId}>
-            {/* Configuração do Discord */}
-            <div className="card mb-8">
-              <h2 className="text-xl font-semibold mb-4 text-discord-blurple">
-                ⚙️ Configuração do Discord - PutIn PutOut
-              </h2>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
-                  <input
-                    type="text"
-                    value={guildId}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setGuildId(e.target.value)
-                      saveToLocalStorage('guildId', e.target.value)
-                    }}
-                    placeholder="123456789012345678"
-                    className="input-field w-full"
-                  />
-                </div>
+              {/* Coluna Esquerda: Controles */}
+              <div className="lg:col-span-4 space-y-6">
+                {/* Configuração do Discord */}
+                <div className="card">
+                  <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-discord-blurple">
+                    <span className="opacity-70">⚙️</span> Configurações
+                  </h2>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
-                  <input
-                    type="text"
-                    value={voiceChannelId}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setVoiceChannelId(e.target.value)
-                      saveToLocalStorage('voiceChannelId', e.target.value)
-                    }}
-                    placeholder="123456789012345678"
-                    className="input-field w-full"
-                  />
-                </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Server ID</label>
+                      <input
+                        type="text"
+                        value={guildId}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setGuildId(e.target.value)
+                          saveToLocalStorage('guildId', e.target.value)
+                        }}
+                        className="input-field w-full text-sm font-medium"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Volume (0-1)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={volume}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const vol = parseFloat(e.target.value)
-                      setVolume(vol)
-                      saveToLocalStorage('volume', vol)
-                    }}
-                    className="input-field w-full"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Channel ID</label>
+                      <input
+                        type="text"
+                        value={voiceChannelId}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setVoiceChannelId(e.target.value)
+                          saveToLocalStorage('voiceChannelId', e.target.value)
+                        }}
+                        className="input-field w-full text-sm font-medium"
+                      />
+                    </div>
 
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={testConnection}
-                  disabled={!guildId || !voiceChannelId || connectionStatus === 'testing'}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {connectionStatus === 'testing' ? '🔄 Testando...' : '🔗 Test Connection'}
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-discord-green' :
-                    connectionStatus === 'error' ? 'bg-discord-red' :
-                      connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
-                        'bg-gray-500'
-                    }`} />
-                  <span className="text-sm text-gray-300">
-                    {connectionStatus === 'connected' ? 'Conectado' :
-                      connectionStatus === 'error' ? 'Erro' :
-                        connectionStatus === 'testing' ? 'Testando...' :
-                          'Desconectado'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-4 p-3 bg-discord-darker rounded-lg border border-gray-600">
-                <p className="text-sm text-gray-300">
-                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado),
-                  clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
-                </p>
-              </div>
-            </div>
-
-            {/* Link Rápido */}
-            <div className="card mb-8">
-              <h2 className="text-xl font-semibold mb-4 text-discord-green">
-                🚀 Link Rápido
-              </h2>
-
-              <div className="flex gap-4">
-                <input
-                  type="url"
-                  value={quickLink}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
-                  placeholder="Cole aqui links de mp3, YouTube ou Spotify..."
-                  className="input-field flex-1"
-                />
-                <button
-                  onClick={playQuickLink}
-                  disabled={!quickLink.trim() || isLoading || !guildId || !voiceChannelId}
-                  className="btn-success disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? '🔄 Processando...' : '▶️ Tocar Link'}
-                </button>
-              </div>
-
-              <div className="mt-3 p-3 bg-discord-darker rounded-lg border border-gray-600">
-                <p className="text-sm text-gray-300">
-                  <strong>📋 Suportado:</strong> Links diretos (mp3/ogg/wav), YouTube (youtube.com/youtu.be),
-                  Spotify tracks (open.spotify.com/track). Para Spotify sem preview, o sistema busca automaticamente no YouTube.
-                </p>
-              </div>
-            </div>
-
-            {/* Busca */}
-            <div className="mb-6">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                placeholder="🔍 Buscar sons..."
-                className="input-field w-full max-w-md"
-              />
-            </div>
-
-            {/* Biblioteca de Sons */}
-            <div className="card">
-              <h2 className="text-xl font-semibold mb-4 text-discord-fuchsia">
-                📚 Biblioteca de Sons ({filteredSounds.length})
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
-                {filteredSounds.map((sound: Sound, index: number) => (
-                  <div key={index} className="relative group">
-                    {editingIndex === index ? (
-                      <div className="btn-secondary h-full flex flex-col gap-2 ring-1 ring-discord-blurple">
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editingName}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingName(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') renameSound(sound.url, editingName)
-                            if (e.key === 'Escape') setEditingIndex(null)
-                          }}
-                          className="w-full bg-discord-grayDark border border-discord-grayLighter rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-discord-blurple"
-                        />
-                        <div className="flex gap-2">
-                          <button onClick={() => renameSound(sound.url, editingName)} className="text-[10px] text-green-400 hover:underline">Salvar</button>
-                          <button onClick={() => setEditingIndex(null)} className="text-[10px] text-red-400 hover:underline">Cancelar</button>
-                        </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Volume do Bot</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={volume}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const vol = parseFloat(e.target.value)
+                          setVolume(vol)
+                          saveToLocalStorage('volume', vol)
+                        }}
+                        className="w-full accent-discord-blurple bg-discord-darker cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-bold">
+                        <span>MUDO</span>
+                        <span>{Math.round(volume * 100)}%</span>
                       </div>
-                    ) : (
-                      <div className="btn-secondary text-left group hover:scale-[1.02] flex flex-col justify-between h-full min-h-[64px]">
-                        <button
-                          onClick={() => playSound(sound.url, sound.name)}
-                          disabled={isLoading}
-                          className="w-full text-left focus:outline-none"
-                        >
-                          <div className="font-medium truncate group-hover:text-discord-blurple">{sound.name}</div>
-                          <div className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">
-                            {sound.url.includes('youtube') ? 'YouTube' : sound.url.includes('spotify') ? 'Spotify' :
-                              sound.url.includes(':\\') ? 'Local' : 'Direto'}
-                          </div>
-                        </button>
-                        <button
-                          onClick={(e: React.MouseEvent) => {
-                            e.stopPropagation()
-                            setEditingIndex(index)
-                            setEditingName(sound.name)
-                          }}
-                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white"
-                          title="Renomear"
-                        >
-                          ✏️
-                        </button>
-                      </div>
-                    )}
+                    </div>
+
+                    <button
+                      onClick={testConnection}
+                      disabled={!guildId || !voiceChannelId || connectionStatus === 'testing'}
+                      className="btn-primary w-full mt-2"
+                    >
+                      {connectionStatus === 'testing' ? 'Testando...' : '🔗 Testar Conexão'}
+                    </button>
+
+                    <div className="flex items-center justify-center gap-2 py-1">
+                      <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-discord-green shadow-[0_0_8px_#23A559]' :
+                        connectionStatus === 'error' ? 'bg-discord-red shadow-[0_0_8px_#ED4245]' :
+                          connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse' :
+                            'bg-gray-600'
+                        }`} />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                        {connectionStatus === 'connected' ? 'Servidor Pronto' :
+                          connectionStatus === 'error' ? 'Erro de Conexão' :
+                            connectionStatus === 'testing' ? 'Verificando...' :
+                              'Status: Offline'}
+                      </span>
+                    </div>
                   </div>
-                ))}
+                </div>
+
+                {/* Link Rápido */}
+                <div className="card !bg-gradient-to-br from-discord-dark to-[#232428]">
+                  <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-discord-green">
+                    <span className="opacity-70">🚀</span> Link Rápido
+                  </h2>
+
+                  <div className="space-y-4">
+                    <input
+                      type="url"
+                      value={quickLink}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
+                      placeholder="YouTube, Spotify ou MP3 URL..."
+                      className="input-field w-full text-sm"
+                    />
+                    <button
+                      onClick={playQuickLink}
+                      disabled={!quickLink.trim() || isLoading || !guildId || !voiceChannelId}
+                      className="btn-success w-full"
+                    >
+                      {isLoading ? '🔄 Processando...' : '▶️ Tocar Agora'}
+                    </button>
+                    <p className="text-[10px] text-discord-grayLighter text-center italic">
+                      Suporta links diretos, YouTube e Spotify
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Coluna Direita: Biblioteca */}
+              <div className="lg:col-span-8 space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                      placeholder="Filtrar sons da biblioteca..."
+                      className="input-field w-full pl-11 !rounded-2xl shadow-inner !bg-discord-darker/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold flex items-center gap-2 text-discord-fuchsia">
+                      <span className="opacity-70">📚</span> Biblioteca de Áudio
+                    </h2>
+                    <span className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-gray-400 uppercase tracking-widest border border-white/5">
+                      {filteredSounds.length} Sons Disponíveis
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto max-h-[700px] pr-2 custom-scrollbar">
+                    {filteredSounds.map((sound: Sound, index: number) => (
+                      <div key={index} className="relative">
+                        {editingIndex === index ? (
+                          <div className="bg-discord-darker p-3 rounded-2xl border border-discord-blurple shadow-xl animate-in fade-in slide-in-from-top-1">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingName}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingName(e.target.value)}
+                              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                if (e.key === 'Enter') renameSound(sound.url, editingName)
+                                if (e.key === 'Escape') setEditingIndex(null)
+                              }}
+                              className="w-full bg-discord-grayDark border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none mb-3"
+                            />
+                            <div className="flex justify-end gap-3 font-bold text-[11px] uppercase tracking-wider">
+                              <button onClick={() => setEditingIndex(null)} className="text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                              <button onClick={() => renameSound(sound.url, editingName)} className="text-discord-green hover:underline">Salvar Alterações</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="group relative">
+                            <button
+                              onClick={() => playSound(sound.url, sound.name)}
+                              disabled={isLoading}
+                              className="w-full bg-discord-darker hover:bg-discord-grayDark text-left p-4 rounded-2xl border border-white/5 transition-all duration-200 group-hover:border-discord-blurple/30 hover:shadow-xl hover:-translate-y-0.5"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-lg group-hover:bg-discord-blurple/20 group-hover:text-discord-blurple transition-colors">
+                                  {sound.url.includes('youtube') ? '📺' : sound.url.includes('spotify') ? '🎧' : '🔊'}
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                  <div className="font-bold text-sm truncate opacity-90 group-hover:opacity-100">{sound.name}</div>
+                                  <div className="text-[10px] font-bold text-discord-grayLighter uppercase tracking-wider mt-0.5">
+                                    {sound.url.includes('youtube') ? 'YouTube' : sound.url.includes('spotify') ? 'Spotify' :
+                                      sound.url.includes('\\') || sound.url.includes('/') ? 'Arquivo Local' : 'Áudio Direto'}
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={(e: React.MouseEvent) => {
+                                e.stopPropagation()
+                                setEditingIndex(index)
+                                setEditingName(sound.name)
+                              }}
+                              className="absolute top-3 right-3 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-white hover:bg-white/10 rounded-lg"
+                              title="Renomear"
+                            >
+                              ✏️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </PermissionChecker>
         ) : (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🎵</div>
-            <h2 className="text-2xl font-semibold text-discord-blurple mb-4">
-              Configure o Discord
+          <div className="text-center py-20 animate-in fade-in zoom-in duration-500">
+            <div className="w-24 h-24 bg-discord-blurple/10 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-indigo-500/10">
+              <span className="text-5xl">🎵</span>
+            </div>
+            <h2 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
+              Bem-vindo ao PutIn PutOut
             </h2>
-            <p className="text-gray-300 mb-8 max-w-md mx-auto">
-              Para começar a usar o PutIn PutOut, configure o Guild ID e Voice Channel ID abaixo
+            <p className="text-discord-grayLighter mb-12 max-w-lg mx-auto text-lg">
+              Sua central de áudio premium integrada ao Discord.
+              Para começar, conecte o painel ao seu servidor.
             </p>
 
-            {/* Configuração inicial */}
-            <div className="card max-w-2xl mx-auto">
-              <h3 className="text-xl font-semibold mb-4 text-discord-blurple">
-                ⚙️ Configuração Inicial
+            <div className="card max-w-md mx-auto text-left">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <span className="text-discord-blurple">⚙️</span> Configuração Inicial
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
+                  <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-2 ml-1">Server ID</label>
                   <input
                     type="text"
                     value={guildId}
@@ -535,13 +560,13 @@ export default function Home() {
                       setGuildId(e.target.value)
                       saveToLocalStorage('guildId', e.target.value)
                     }}
-                    placeholder="123456789012345678"
+                    placeholder="Cole o ID do servidor aqui..."
                     className="input-field w-full"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
+                  <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-2 ml-1">Channel ID</label>
                   <input
                     type="text"
                     value={voiceChannelId}
@@ -549,41 +574,54 @@ export default function Home() {
                       setVoiceChannelId(e.target.value)
                       saveToLocalStorage('voiceChannelId', e.target.value)
                     }}
-                    placeholder="123456789012345678"
+                    placeholder="Cole o ID do canal de voz aqui..."
                     className="input-field w-full"
                   />
                 </div>
-              </div>
 
-              <div className="p-3 bg-discord-darker rounded-lg border border-gray-600">
-                <p className="text-sm text-gray-300">
-                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado),
-                  clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
-                </p>
+                <div className="pt-2">
+                  <div className="bg-discord-darker p-4 rounded-2xl border border-white/5">
+                    <p className="text-xs text-discord-grayLighter leading-relaxed">
+                      <strong className="text-white block mb-1">Dica:</strong>
+                      Ative o Modo Desenvolvedor nas configurações do seu Discord para conseguir copiar os IDs com o botão direito.
+                    </p>
+                  </div>
+                </div>
+
+                {guildId && voiceChannelId && (
+                  <button onClick={() => window.location.reload()} className="btn-primary w-full py-4 mt-2">
+                    Finalizar Configuração 🚀
+                  </button>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Status/Toast */}
+        {/* Status/Toast Premium */}
         {status && (
-          <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg max-w-md z-50 ${status.type === 'success' ? 'bg-discord-green text-black' :
-            status.type === 'error' ? 'bg-discord-red text-white' :
-              'bg-discord-yellow text-black'
-            }`}>
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0">
-                {status.type === 'success' ? '✅' : status.type === 'error' ? '❌' : 'ℹ️'}
+          <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-right-10 duration-300">
+            <div className={`p-1 rounded-2xl shadow-2xl backdrop-blur-xl border border-white/10 ${status.type === 'success' ? 'bg-discord-green/20' :
+                status.type === 'error' ? 'bg-discord-red/20' :
+                  'bg-discord-yellow/20'
+              }`}>
+              <div className={`flex items-center gap-4 px-6 py-4 rounded-xl ${status.type === 'success' ? 'bg-[#23A559]/10 text-discord-green' :
+                  status.type === 'error' ? 'bg-[#ED4245]/10 text-discord-red' :
+                    'bg-[#FEE75C]/10 text-discord-yellow'
+                }`}>
+                <div className="text-xl">
+                  {status.type === 'success' ? '✔' : status.type === 'error' ? '✖' : 'ℹ'}
+                </div>
+                <div className="font-bold text-sm tracking-wide">
+                  {status.message}
+                </div>
+                <button
+                  onClick={() => setStatus(null)}
+                  className="ml-4 opacity-50 hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
               </div>
-              <div className="text-sm">
-                <p className="font-medium">{status.message}</p>
-              </div>
-              <button
-                onClick={() => setStatus(null)}
-                className="flex-shrink-0 ml-2 text-gray-600 hover:text-gray-800"
-              >
-                ✕
-              </button>
             </div>
           </div>
         )}

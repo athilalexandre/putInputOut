@@ -231,12 +231,7 @@ app.get('/api/sounds', (req, res) => {
 
 // Endpoint para atualizar um som (editar nome)
 app.post('/api/sounds/update', (req, res) => {
-  const { oldName, newName, url, secret } = req.body;
-  const SHARED_SECRET = process.env.SHARED_SECRET || 'chave_secreta_123';
-
-  if (secret !== SHARED_SECRET) {
-    return res.status(401).json({ error: 'Secret inválido' });
-  }
+  const { oldName, newName, url } = req.body;
 
   try {
     const soundsPath = path.join(process.cwd(), '../web/sounds.json');
