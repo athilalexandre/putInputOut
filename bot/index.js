@@ -15,7 +15,8 @@ import ffmpegPath from 'ffmpeg-static';
 dotenv.config();
 
 // Log para verificar se o código atualizado foi aplicado
-console.log('🔄 Bot iniciado com código atualizado (v4) - Sem YouTube, Apenas Spotify/Local');
+console.log('🚀 [BOT v5] INICIANDO SISTEMA...');
+console.log('📡 O Logger de requisições está ATIVO!');
 
 // Configuração do bot Discord
 const client = new Client({
@@ -25,6 +26,13 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ]
+});
+
+// Inicializar bot Discord
+client.once('ready', async () => {
+  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
+  console.log(`🔗 Link do Site: https://put-input-out.vercel.app/`);
+  console.log(`⚙️  Aguardando comandos...`);
 });
 
 // Configuração do Spotify (opcional)
@@ -42,7 +50,20 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(express.json());
-app.use(cors()); // Permitir todas as origens para facilitar com Ngrok
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning']
+}));
+
+// Middleware de Log para Diagnóstico
+app.use((req, res, next) => {
+  console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  if (req.method === 'POST') {
+    console.log('📦 Body:', JSON.stringify(req.body).substring(0, 100) + '...');
+  }
+  next();
+});
 
 // Armazenar conexões de voz por guild
 const voiceConnections = new Map();
@@ -352,24 +373,6 @@ app.post('/play', async (req, res) => {
   }
 });
 
-// Inicializar bot Discord
-client.once('ready', async () => {
-  console.log(`🤖 Bot ${client.user.tag} está online!`);
-  console.log(`📡 Servidor Express rodando na porta ${PORT}`);
-
-  try {
-    const channelId = '1368286913651544075';
-    const channel = await client.channels.fetch(channelId);
-    if (channel && channel.isTextBased()) {
-      channel.send({
-        content: `🎧 **O Bot de Sons ${client.user.username} está online!**\n\n📌 **Como usar:**\n- Clique no link do Soundboard no site\n- Use \`!play <nome do som>\` (ex: \`!play ratinho\`) para sons locais\n\n⚠️ *Nota: O suporte a links externos foi limitado apenas a Spotify Tracks com prévia.*`
-      });
-    }
-  } catch (err) {
-    console.log('⚠️ Erro ao enviar mensagem de boas-vindas:', err.message);
-  }
-});
-
 // Comandos do Discord
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content.startsWith('!')) return;
@@ -398,7 +401,7 @@ client.on('messageCreate', async (message) => {
     }
 
     message.reply({
-      content: `📌 **Comandos do Bot:**\n\n▶️ \`!play <nome ou url>\` - Toca um som ou URL\n⏹️ \`!stop\` - Para a reprodução atual\n📚 \`!help sons\` - Lista todos os sons da biblioteca\n🌐 **Site:** http://localhost:3000`
+      content: `📌 **Comandos do Bot:**\n\n▶️ \`!play <nome ou url>\` - Toca um som ou URL\n⏹️ \`!stop\` - Para a reprodução atual\n📚 \`!help sons\` - Lista todos os sons da biblioteca`
     });
   }
 
@@ -446,33 +449,17 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Login do bot (opcional para desenvolvimento)
-if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN !== 'seu_discord_bot_token_aqui') {
+// Login do bot
+if (process.env.DISCORD_TOKEN) {
   client.login(process.env.DISCORD_TOKEN);
-} else {
-  console.log('⚠️ Token do Discord não configurado - modo de desenvolvimento');
 }
 
 // Iniciar servidor Express
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Servidor Express iniciado na porta ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`🚀 [BOT v5] Backend pronto na porta ${PORT}`);
+  console.log(`🌍 TESTE AGORA: https://saltily-unprovident-xavier.ngrok-free.dev/health`);
 });
 
-// Manter o processo rodando
-process.on('SIGINT', () => {
-  console.log('🛑 Encerrando servidor...');
-  server.close(() => {
-    console.log('✅ Servidor encerrado');
-    process.exit(0);
-  });
-});
-
-// Tratamento de erros não capturados
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled Rejection:', error);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
-});
+// Tratamento de erros
+process.on('unhandledRejection', (error) => console.error('Unhandled:', error));
+process.on('uncaughtException', (error) => console.error('Uncaught:', error));
