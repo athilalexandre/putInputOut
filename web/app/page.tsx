@@ -115,7 +115,7 @@ export default function Home() {
 
   // Salvar configurações no localStorage
   const saveToLocalStorage = (key: string, value: string | number) => {
-    localStorage.setItem(`discord_${key}`, value.toString())
+    localStorage.setItem(key, value.toString())
   }
 
   // Testar conexão
@@ -133,20 +133,21 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          soundUrl: 'https://www.youtube.com/watch?v=QUlMp1X1Gtk',
+          soundUrl: soundList[0]?.url || 'https://www.soundjay.com/buttons/beep-01a.mp3',
           guildId,
           voiceChannelId,
           volume: 0.5
         })
       })
 
-      if (response.ok) {
+      const result = await response.json()
+
+      if (response.ok && result.ok) {
         setConnectionStatus('connected')
-        setStatus({ type: 'success', message: '✅ Conexão testada com sucesso! 🎵 Tocando música de boas-vindas PutIn PutOut!' })
+        setStatus({ type: 'success', message: '✅ Conexão testada com sucesso! Tocando música de teste...' })
       } else {
-        const error = await response.json()
         setConnectionStatus('error')
-        setStatus({ type: 'error', message: `❌ Erro na conexão: ${error.error || 'Erro desconhecido'}` })
+        setStatus({ type: 'error', message: `❌ Erro na conexão: ${result.error || 'O bot não respondeu corretamente'}` })
       }
     } catch (error) {
       setConnectionStatus('error')
