@@ -3,17 +3,21 @@ import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSt
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 import ytsr from 'ytsr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
+import path from 'path';
+import fs from 'fs';
+
+import ffmpegPath from 'ffmpeg-static';
 
 // Carregar variáveis de ambiente
 dotenv.config();
 
 // Log para verificar se o código atualizado foi aplicado
-console.log('🔄 Bot iniciado com código atualizado - sem @discordjs/opus');
+console.log('🔄 Bot iniciado com código atualizado (v3) - usando ffmpeg-static');
 
 // Configuração do bot Discord
 const client = new Client({
@@ -36,7 +40,7 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
 
 // Configuração do Express
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(express.json());
@@ -46,9 +50,29 @@ app.use(cors()); // Permitir todas as origens para facilitar com Ngrok
 const voiceConnections = new Map();
 const audioPlayers = new Map();
 
-// Função para converter stream para PCM via ffmpeg
+// Função para converter arquivo local para PCM via ffmpeg
+function ffmpegPcmFromPath(filePath) {
+  console.log(`🎬 Iniciando ffmpeg para arquivo: ${filePath}`);
+  const ffmpeg = spawn(ffmpegPath, [
+    '-i', filePath,
+    '-f', 's16le',
+    '-ar', '48000',
+    '-ac', '2',
+    '-loglevel', 'error',
+    'pipe:1'
+  ]);
+
+  const resource = createAudioResource(ffmpeg.stdout, {
+    inlineVolume: true,
+    inputType: 'raw'
+  });
+
+  ffmpeg.on('error', err => console.error('❌ Erro no ffmpeg (Path):', err));
+  return resource;
+}
+
 function ffmpegPcmFromReadable(readable) {
-  const ffmpeg = spawn('ffmpeg', [
+  const ffmpeg = spawn(ffmpegPath, [
     '-i', 'pipe:0',
     '-f', 's16le',
     '-ar', '48000',
@@ -59,10 +83,16 @@ function ffmpegPcmFromReadable(readable) {
 
   readable.pipe(ffmpeg.stdin);
 
-  return createAudioResource(ffmpeg.stdout, {
+  const resource = createAudioResource(ffmpeg.stdout, {
     inlineVolume: true,
     inputType: 'raw'
   });
+
+  // Log de erros do ffmpeg
+  ffmpeg.on('error', err => console.error('❌ Erro no processo ffmpeg:', err));
+  ffmpeg.stderr.on('data', data => console.log(`ffmpeg info: ${data}`));
+
+  return resource;
 }
 
 // Função para detectar tipo de URL
@@ -197,6 +227,20 @@ async function connectToVoiceChannel(guildId, voiceChannelId) {
     let player = audioPlayers.get(guildId);
     if (!player) {
       player = createAudioPlayer();
+
+      player.on(AudioPlayerStatus.Playing, () => {
+        console.log('▶️ Player: Começou a tocar!');
+      });
+
+      player.on(AudioPlayerStatus.Buffering, () => {
+        console.log('⏳ Player: Carregando áudio (Buffering)...');
+      });
+
+      player.on('error', error => {
+        console.error('❌ Player: Erro crítico:', error.message);
+        console.error('Detalhes do recurso:', error.resource.metadata);
+      });
+
       connection.subscribe(player);
       audioPlayers.set(guildId, player);
     }
@@ -217,7 +261,6 @@ app.get('/health', (req, res) => {
 app.get('/api/sounds', (req, res) => {
   try {
     const soundsPath = path.join(process.cwd(), '../web/sounds.json');
-    const fs = require('fs');
     if (fs.existsSync(soundsPath)) {
       const data = fs.readFileSync(soundsPath, 'utf8');
       res.json(JSON.parse(data));
@@ -235,7 +278,6 @@ app.post('/api/sounds/update', (req, res) => {
 
   try {
     const soundsPath = path.join(process.cwd(), '../web/sounds.json');
-    const fs = require('fs');
     let sounds = [];
     if (fs.existsSync(soundsPath)) {
       sounds = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
@@ -315,17 +357,15 @@ app.post('/play', async (req, res) => {
           audioResource = ffmpegPcmFromReadable(youtubeStream);
           source = 'SPOTIFY_FALLBACK_YT';
         }
-      } else if (soundUrl.includes(':\\') || require('fs').existsSync(soundUrl)) {
+      } else if (soundUrl.includes(':\\') || soundUrl.includes('/') || fs.existsSync(soundUrl)) {
         // Arquivo local
-        const fs = require('fs');
         const cleanPath = soundUrl.replace(/^\"|\"$/g, '');
         console.log(`🎵 Processando arquivo local: ${cleanPath}`);
         if (fs.existsSync(cleanPath)) {
-          const localStream = fs.createReadStream(cleanPath);
-          audioResource = ffmpegPcmFromReadable(localStream);
+          audioResource = ffmpegPcmFromPath(cleanPath);
           source = 'LOCAL_FILE';
         } else {
-          throw new Error('Arquivo local não encontrado');
+          throw new Error(`Arquivo local não encontrado: ${cleanPath}`);
         }
       } else {
         // URL direta de áudio
@@ -370,6 +410,11 @@ app.post('/play', async (req, res) => {
 
     } catch (streamError) {
       console.error('Erro ao processar stream:', streamError);
+
+      // Salvar erro em arquivo para debug
+      const logMsg = `${new Date().toISOString()} - [${source}] Erro: ${streamError.message}\nStack: ${streamError.stack}\n\n`;
+      fs.appendFileSync('bot_error.log', logMsg);
+
       res.status(500).json({
         error: 'Falha ao processar áudio',
         details: streamError.message,
@@ -379,6 +424,8 @@ app.post('/play', async (req, res) => {
 
   } catch (error) {
     console.error('Erro no endpoint /play:', error);
+    fs.appendFileSync('bot_error.log', `${new Date().toISOString()} - [PLAY_ENDPOINT] Erro: ${error.message}\n`);
+
     res.status(500).json({
       error: 'Erro interno do servidor',
       details: error.message
@@ -414,8 +461,7 @@ client.on('messageCreate', async (message) => {
   if (command === 'help') {
     if (args[0] === 'sons') {
       try {
-        const soundsPath = require('path').join(process.cwd(), '../web/sounds.json');
-        const fs = require('fs');
+        const soundsPath = path.join(process.cwd(), '../web/sounds.json');
         if (fs.existsSync(soundsPath)) {
           const soundsData = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
           const soundNames = soundsData.map(s => `• ${s.name}`).join('\n');
@@ -453,8 +499,8 @@ client.on('messageCreate', async (message) => {
     message.reply(`🎵 Buscando som: **${query}**...`);
 
     try {
-      const soundsPath = require('path').join(process.cwd(), '../web/sounds.json');
-      const soundsData = JSON.parse(require('fs').readFileSync(soundsPath, 'utf8'));
+      const soundsPath = path.join(process.cwd(), '../web/sounds.json');
+      const soundsData = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
       const foundSound = soundsData.find(s => s.name.toLowerCase().includes(query.toLowerCase()));
       const soundUrl = foundSound ? foundSound.url : query;
       const voiceChannelId = '1141073147840430160';

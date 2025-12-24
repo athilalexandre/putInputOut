@@ -1,0 +1,5 @@
+2025-12-24T05:24:04.029Z - [DIRECT] Erro: Arquivo local não encontrado: https://open.spotify.com/intl-pt/album/0UFMQ3KEnJkf8U6fCTnRoi
+Stack: Error: Arquivo local não encontrado: https://open.spotify.com/intl-pt/album/0UFMQ3KEnJkf8U6fCTnRoi
+    at file:///C:/Users/athil/putinputout/bot/index.js:368:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
