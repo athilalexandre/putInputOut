@@ -256,7 +256,7 @@ export default function Home() {
   }
 
   // Filtrar sons baseado na busca
-  const filteredSounds = soundList.filter(sound =>
+  const filteredSounds = soundList.filter((sound: Sound) =>
     sound.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -329,7 +329,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={guildId}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setGuildId(e.target.value)
                       saveToLocalStorage('guildId', e.target.value)
                     }}
@@ -343,7 +343,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={voiceChannelId}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setVoiceChannelId(e.target.value)
                       saveToLocalStorage('voiceChannelId', e.target.value)
                     }}
@@ -360,7 +360,7 @@ export default function Home() {
                     max="1"
                     step="0.1"
                     value={volume}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const vol = parseFloat(e.target.value)
                       setVolume(vol)
                       saveToLocalStorage('volume', vol)
@@ -381,9 +381,9 @@ export default function Home() {
 
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-discord-green' :
-                      connectionStatus === 'error' ? 'bg-discord-red' :
-                        connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
-                          'bg-gray-500'
+                    connectionStatus === 'error' ? 'bg-discord-red' :
+                      connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
+                        'bg-gray-500'
                     }`} />
                   <span className="text-sm text-gray-300">
                     {connectionStatus === 'connected' ? 'Conectado' :
@@ -412,7 +412,7 @@ export default function Home() {
                 <input
                   type="url"
                   value={quickLink}
-                  onChange={(e) => setQuickLink(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
                   placeholder="Cole aqui links de mp3, YouTube ou Spotify..."
                   className="input-field flex-1"
                 />
@@ -438,7 +438,7 @@ export default function Home() {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                 placeholder="🔍 Buscar sons..."
                 className="input-field w-full max-w-md"
               />
@@ -451,7 +451,7 @@ export default function Home() {
               </h2>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
-                {filteredSounds.map((sound, index) => (
+                {filteredSounds.map((sound: Sound, index: number) => (
                   <div key={index} className="relative group">
                     {editingIndex === index ? (
                       <div className="btn-secondary h-full flex flex-col gap-2 ring-1 ring-discord-blurple">
@@ -459,8 +459,8 @@ export default function Home() {
                           autoFocus
                           type="text"
                           value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingName(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === 'Enter') renameSound(sound.url, editingName)
                             if (e.key === 'Escape') setEditingIndex(null)
                           }}
@@ -485,7 +485,7 @@ export default function Home() {
                           </div>
                         </button>
                         <button
-                          onClick={(e) => {
+                          onClick={(e: React.MouseEvent) => {
                             e.stopPropagation()
                             setEditingIndex(index)
                             setEditingName(sound.name)
@@ -524,7 +524,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={guildId}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setGuildId(e.target.value)
                       saveToLocalStorage('guildId', e.target.value)
                     }}
@@ -538,7 +538,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={voiceChannelId}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setVoiceChannelId(e.target.value)
                       saveToLocalStorage('voiceChannelId', e.target.value)
                     }}
@@ -561,8 +561,8 @@ export default function Home() {
         {/* Status/Toast */}
         {status && (
           <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg max-w-md z-50 ${status.type === 'success' ? 'bg-discord-green text-black' :
-              status.type === 'error' ? 'bg-discord-red text-white' :
-                'bg-discord-yellow text-black'
+            status.type === 'error' ? 'bg-discord-red text-white' :
+              'bg-discord-yellow text-black'
             }`}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
