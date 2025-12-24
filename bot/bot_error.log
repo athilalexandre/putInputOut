@@ -3,3 +3,15 @@ Stack: Error: Arquivo local não encontrado: https://open.spotify.com/intl-pt/al
     at file:///C:/Users/athil/putinputout/bot/index.js:368:17
     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
 
+2025-12-24T05:26:32.868Z - [DIRECT] Erro: Falha ao buscar equivalente no YouTube
+Stack: Error: Falha ao buscar equivalente no YouTube
+    at searchYouTubeByArtistTitle (file:///C:/Users/athil/putinputout/bot/index.js:187:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///C:/Users/athil/putinputout/bot/index.js:374:30
+
+2025-12-24T05:29:42.909Z - [DIRECT] Erro: Falha ao buscar equivalente no YouTube
+Stack: Error: Falha ao buscar equivalente no YouTube
+    at searchYouTubeByArtistTitle (file:///C:/Users/athil/putinputout/bot/index.js:187:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///C:/Users/athil/putinputout/bot/index.js:374:30
+

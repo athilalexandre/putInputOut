@@ -235,13 +235,9 @@ export default function Home() {
       const result: PlayResponse = await response.json()
 
       if (response.ok && result.ok) {
-        let message = '✅ Link processado com sucesso!'
+        let message = '✅ Link iniciado com sucesso!'
 
-        if (result.source === 'SPOTIFY_FALLBACK_YT') {
-          message += ' (Sem preview no Spotify — reproduzindo equivalente do YouTube)'
-        } else if (result.source === 'YT') {
-          message += ' (YouTube)'
-        } else if (result.source === 'SPOTIFY_PREVIEW') {
+        if (result.source === 'SPOTIFY_PREVIEW') {
           message += ' (Spotify Preview)'
         } else if (result.source === 'DIRECT') {
           message += ' (Áudio direto)'
@@ -428,7 +424,7 @@ export default function Home() {
                       type="url"
                       value={quickLink}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
-                      placeholder="YouTube, Spotify ou MP3 URL..."
+                      placeholder="Spotify Track ou Link de Áudio (MP3/WAV)..."
                       className="input-field w-full text-sm"
                     />
                     <button
@@ -439,7 +435,7 @@ export default function Home() {
                       {isLoading ? '🔄 Processando...' : '▶️ Tocar Agora'}
                     </button>
                     <p className="text-[10px] text-discord-grayLighter text-center italic">
-                      Suporta links diretos, YouTube e Spotify
+                      Suporta links diretos e Spotify (apenas músicas com prévia)
                     </p>
                   </div>
                 </div>
@@ -500,12 +496,12 @@ export default function Home() {
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-lg group-hover:bg-discord-blurple/20 group-hover:text-discord-blurple transition-colors">
-                                  {sound.url.includes('youtube') ? '📺' : sound.url.includes('spotify') ? '🎧' : '🔊'}
+                                  {sound.url.includes('spotify') ? '🎧' : '🔊'}
                                 </div>
                                 <div className="flex-1 overflow-hidden">
                                   <div className="font-bold text-sm truncate opacity-90 group-hover:opacity-100">{sound.name}</div>
                                   <div className="text-[10px] font-bold text-discord-grayLighter uppercase tracking-wider mt-0.5">
-                                    {sound.url.includes('youtube') ? 'YouTube' : sound.url.includes('spotify') ? 'Spotify' :
+                                    {sound.url.includes('spotify') ? 'Spotify' :
                                       sound.url.includes('\\') || sound.url.includes('/') ? 'Arquivo Local' : 'Áudio Direto'}
                                   </div>
                                 </div>
@@ -602,12 +598,12 @@ export default function Home() {
         {status && (
           <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-right-10 duration-300">
             <div className={`p-1 rounded-2xl shadow-2xl backdrop-blur-xl border border-white/10 ${status.type === 'success' ? 'bg-discord-green/20' :
-                status.type === 'error' ? 'bg-discord-red/20' :
-                  'bg-discord-yellow/20'
+              status.type === 'error' ? 'bg-discord-red/20' :
+                'bg-discord-yellow/20'
               }`}>
               <div className={`flex items-center gap-4 px-6 py-4 rounded-xl ${status.type === 'success' ? 'bg-[#23A559]/10 text-discord-green' :
-                  status.type === 'error' ? 'bg-[#ED4245]/10 text-discord-red' :
-                    'bg-[#FEE75C]/10 text-discord-yellow'
+                status.type === 'error' ? 'bg-[#ED4245]/10 text-discord-red' :
+                  'bg-[#FEE75C]/10 text-discord-yellow'
                 }`}>
                 <div className="text-xl">
                   {status.type === 'success' ? '✔' : status.type === 'error' ? '✖' : 'ℹ'}

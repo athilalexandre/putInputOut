@@ -54,7 +54,7 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
       }
 
       const result = await memberResponse.json()
-      
+
       if (result.hasPermission) {
         setHasPermission(true)
       } else {
@@ -77,9 +77,9 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
     }
 
     checkPermissions()
-  }, [session, guildId, voiceChannelId, checkPermissions])
+  }, [session?.accessToken, guildId, voiceChannelId, checkPermissions])
 
-  if (isChecking) {
+  if (isChecking && !hasPermission) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-discord-blurple"></div>
@@ -98,7 +98,7 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
         <p className="text-gray-300 mb-4">
           {error || 'Você não tem permissão para usar este canal de voz'}
         </p>
-        
+
         <div className="bg-discord-dark p-4 rounded-lg border border-gray-600 text-left">
           <h4 className="font-medium text-discord-yellow mb-2">
             🔑 Permissões Necessárias:

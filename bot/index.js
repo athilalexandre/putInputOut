@@ -3,8 +3,6 @@ import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSt
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import ytdl from '@distube/ytdl-core';
-import ytsr from 'ytsr';
 import SpotifyWebApi from 'spotify-web-api-node';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
@@ -17,7 +15,7 @@ import ffmpegPath from 'ffmpeg-static';
 dotenv.config();
 
 // Log para verificar se o código atualizado foi aplicado
-console.log('🔄 Bot iniciado com código atualizado (v3) - usando ffmpeg-static');
+console.log('🔄 Bot iniciado com código atualizado (v4) - Sem YouTube, Apenas Spotify/Local');
 
 // Configuração do bot Discord
 const client = new Client({
@@ -95,48 +93,14 @@ function ffmpegPcmFromReadable(readable) {
   return resource;
 }
 
-// Função para detectar tipo de URL
-function isYouTube(url) {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname === 'youtube.com' || urlObj.hostname === 'www.youtube.com' || urlObj.hostname === 'youtu.be';
-  } catch {
-    return false;
-  }
-}
-
 function isSpotifyTrack(url) {
   try {
     const urlObj = new URL(url);
-    return urlObj.hostname === 'open.spotify.com' && urlObj.pathname.startsWith('/track/');
+    const isSpotify = urlObj.hostname.includes('spotify.com');
+    const isTrack = urlObj.pathname.includes('/track/');
+    return isSpotify && isTrack;
   } catch {
     return false;
-  }
-}
-
-// Função para obter stream do YouTube
-async function getYouTubeReadable(url) {
-  try {
-    const quality = process.env.YOUTUBE_AUDIO_QUALITY || 'highestaudio';
-    return ytdl(url, {
-      filter: 'audioonly',
-      quality: quality,
-      highWaterMark: 1 << 24,
-      dlChunkSize: 1024 * 1024,
-      requestOptions: {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Sec-Fetch-Mode': 'no-cors',
-          'Sec-Fetch-Dest': 'video',
-          'Referer': 'https://www.youtube.com/',
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Erro ao obter stream do YouTube:', error);
-    throw new Error('Falha ao processar vídeo do YouTube (403/Forbidden)');
   }
 }
 
@@ -157,30 +121,6 @@ async function getSpotifyPreviewUrl(trackId) {
   } catch (error) {
     console.error('Erro ao obter preview do Spotify:', error);
     throw new Error('Falha ao obter preview do Spotify');
-  }
-}
-
-// Função para buscar no YouTube por artista e título
-async function searchYouTubeByArtistTitle(artist, title) {
-  try {
-    const query = `${artist} - ${title}`;
-    const results = await ytsr(query, { limit: 5 });
-
-    // Filtrar resultados válidos (ignorar lives longas)
-    const validResults = results.items.filter(item =>
-      item.type === 'video' &&
-      item.duration &&
-      item.duration < 600 // Menos de 10 minutos
-    );
-
-    if (validResults.length === 0) {
-      throw new Error('Nenhum resultado válido encontrado no YouTube');
-    }
-
-    return validResults[0].url;
-  } catch (error) {
-    console.error('Erro na busca do YouTube:', error);
-    throw new Error('Falha ao buscar equivalente no YouTube');
   }
 }
 
@@ -325,40 +265,22 @@ app.post('/play', async (req, res) => {
     let source = 'DIRECT';
 
     try {
-      if (isYouTube(soundUrl)) {
-        console.log(`🎵 Processando YouTube: ${soundUrl}`);
-        const youtubeStream = await getYouTubeReadable(soundUrl);
-        audioResource = ffmpegPcmFromReadable(youtubeStream);
-        source = 'YT';
-      } else if (isSpotifyTrack(soundUrl)) {
+      if (isSpotifyTrack(soundUrl)) {
         console.log(`🎵 Processando Spotify: ${soundUrl}`);
         const trackId = soundUrl.split('/track/')[1]?.split('?')[0];
 
-        try {
-          // Tentar preview do Spotify
-          const previewUrl = await getSpotifyPreviewUrl(trackId);
-          if (previewUrl) {
-            console.log('✅ Preview do Spotify disponível');
-            audioResource = ffmpegPcmFromReadable(Readable.fromWeb(fetch(previewUrl).then(r => r.body)));
-            source = 'SPOTIFY_PREVIEW';
-          } else {
-            throw new Error('Preview não disponível');
-          }
-        } catch (previewError) {
-          console.log('⚠️ Preview do Spotify indisponível, buscando no YouTube...');
-
-          // Fallback para YouTube
-          const track = await spotifyApi.getTrack(trackId);
-          const artist = track.body.artists[0]?.name;
-          const title = track.body.name;
-
-          const youtubeUrl = await searchYouTubeByArtistTitle(artist, title);
-          const youtubeStream = await getYouTubeReadable(youtubeUrl);
-          audioResource = ffmpegPcmFromReadable(youtubeStream);
-          source = 'SPOTIFY_FALLBACK_YT';
+        // Obter preview do Spotify
+        const previewUrl = await getSpotifyPreviewUrl(trackId);
+        if (previewUrl) {
+          console.log('✅ Preview do Spotify disponível');
+          const response = await fetch(previewUrl);
+          audioResource = ffmpegPcmFromReadable(Readable.fromWeb(response.body));
+          source = 'SPOTIFY_PREVIEW';
+        } else {
+          throw new Error('Este link do Spotify não possui prévia de áudio disponível para bots. Tente outro link.');
         }
-      } else if (soundUrl.includes(':\\') || soundUrl.includes('/') || fs.existsSync(soundUrl)) {
-        // Arquivo local
+      } else if ((soundUrl.includes(':\\') || soundUrl.includes('/')) && !soundUrl.startsWith('http')) {
+        // Arquivo local (garantindo que não é uma URL http)
         const cleanPath = soundUrl.replace(/^\"|\"$/g, '');
         console.log(`🎵 Processando arquivo local: ${cleanPath}`);
         if (fs.existsSync(cleanPath)) {
@@ -403,21 +325,18 @@ app.post('/play', async (req, res) => {
       res.json({
         ok: true,
         source: source,
-        message: source === 'SPOTIFY_FALLBACK_YT'
-          ? 'Sem preview no Spotify — reproduzindo equivalente do YouTube'
-          : 'Áudio iniciado com sucesso'
+        message: 'Áudio iniciado com sucesso'
       });
 
     } catch (streamError) {
-      console.error('Erro ao processar stream:', streamError);
+      console.error('Erro ao processar áudio:', streamError.message);
 
       // Salvar erro em arquivo para debug
       const logMsg = `${new Date().toISOString()} - [${source}] Erro: ${streamError.message}\nStack: ${streamError.stack}\n\n`;
       fs.appendFileSync('bot_error.log', logMsg);
 
-      res.status(500).json({
-        error: 'Falha ao processar áudio',
-        details: streamError.message,
+      res.status(400).json({
+        error: streamError.message,
         source: source
       });
     }
@@ -443,7 +362,7 @@ client.once('ready', async () => {
     const channel = await client.channels.fetch(channelId);
     if (channel && channel.isTextBased()) {
       channel.send({
-        content: `🎧 **O Bot de Sons ${client.user.username} está online!**\n\n📌 **Como usar:**\n- Clique no link do Soundboard no site\n- Use \`!help\` aqui no Discord para comandos\n- Ou use \`!play <nome do som>\` (ex: \`!play ratinho\`)\n\n⚠️ *Nota: O som será ouvido apenas para quem estiver no canal de voz "Mansão".*`
+        content: `🎧 **O Bot de Sons ${client.user.username} está online!**\n\n📌 **Como usar:**\n- Clique no link do Soundboard no site\n- Use \`!play <nome do som>\` (ex: \`!play ratinho\`) para sons locais\n\n⚠️ *Nota: O suporte a links externos foi limitado apenas a Spotify Tracks com prévia.*`
       });
     }
   } catch (err) {
