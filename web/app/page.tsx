@@ -49,7 +49,15 @@ export default function Home() {
     }
   }, [authStatus, router])
 
-  // Carregar configurações do localStorage
+  // Salvar configurações no localStorage quando mudarem
+  useEffect(() => {
+    if (guildId) localStorage.setItem('guildId', guildId)
+    if (voiceChannelId) localStorage.setItem('voiceChannelId', voiceChannelId)
+    localStorage.setItem('volume', volume.toString())
+    if (quickLink) localStorage.setItem('quickLink', quickLink)
+  }, [guildId, voiceChannelId, volume, quickLink])
+
+  // Carregar configurações do localStorage (apenas no mount)
   useEffect(() => {
     const savedGuildId = localStorage.getItem('guildId')
     const savedVoiceChannelId = localStorage.getItem('voiceChannelId')
@@ -60,7 +68,7 @@ export default function Home() {
     if (savedVoiceChannelId) setVoiceChannelId(savedVoiceChannelId)
     if (savedVolume) setVolume(parseFloat(savedVolume))
     if (savedQuickLink) setQuickLink(savedQuickLink)
-    // Carregar sons inicialmente
+
     fetchSounds()
   }, [])
 
@@ -76,7 +84,6 @@ export default function Home() {
         const data = await response.json()
         setSoundList(data)
       } else {
-        // Fallback para o arquivo local se o bot não estiver online
         setSoundList(sounds)
       }
     } catch (err) {
@@ -94,16 +101,13 @@ export default function Home() {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true'
         },
-        body: JSON.stringify({
-          url,
-          newName
-        })
+        body: JSON.stringify({ url, newName })
       })
 
       if (response.ok) {
         setEditingIndex(null)
         setStatus({ type: 'success', message: '✅ Nome atualizado com sucesso!' })
-        fetchSounds() // Recarregar lista
+        fetchSounds()
       } else {
         const errorData = await response.json()
         setStatus({ type: 'error', message: `❌ Erro ao atualizar nome: ${errorData.error || 'Erro desconhecido'}` })
@@ -111,11 +115,6 @@ export default function Home() {
     } catch (err) {
       setStatus({ type: 'error', message: '❌ Erro de conexão com o bot.' })
     }
-  }
-
-  // Salvar configurações no localStorage
-  const saveToLocalStorage = (key: string, value: string | number) => {
-    localStorage.setItem(key, value.toString())
   }
 
   // Testar conexão
@@ -245,7 +244,6 @@ export default function Home() {
         }
 
         setStatus({ type: 'success', message })
-        saveToLocalStorage('quickLink', quickLink.trim())
       } else {
         setStatus({
           type: 'error',
@@ -348,10 +346,7 @@ export default function Home() {
                       <input
                         type="text"
                         value={guildId}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setGuildId(e.target.value)
-                          saveToLocalStorage('guildId', e.target.value)
-                        }}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGuildId(e.target.value)}
                         className="input-field w-full text-sm font-medium"
                       />
                     </div>
@@ -361,10 +356,7 @@ export default function Home() {
                       <input
                         type="text"
                         value={voiceChannelId}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setVoiceChannelId(e.target.value)
-                          saveToLocalStorage('voiceChannelId', e.target.value)
-                        }}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVoiceChannelId(e.target.value)}
                         className="input-field w-full text-sm font-medium"
                       />
                     </div>
@@ -377,11 +369,7 @@ export default function Home() {
                         max="1"
                         step="0.05"
                         value={volume}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const vol = parseFloat(e.target.value)
-                          setVolume(vol)
-                          saveToLocalStorage('volume', vol)
-                        }}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVolume(parseFloat(e.target.value))}
                         className="w-full accent-discord-blurple bg-discord-darker cursor-pointer"
                       />
                       <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-bold">
@@ -553,10 +541,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={guildId}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setGuildId(e.target.value)
-                      saveToLocalStorage('guildId', e.target.value)
-                    }}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGuildId(e.target.value)}
                     placeholder="Cole o ID do servidor aqui..."
                     className="input-field w-full"
                   />
@@ -567,10 +552,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={voiceChannelId}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setVoiceChannelId(e.target.value)
-                      saveToLocalStorage('voiceChannelId', e.target.value)
-                    }}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVoiceChannelId(e.target.value)}
                     placeholder="Cole o ID do canal de voz aqui..."
                     className="input-field w-full"
                   />
