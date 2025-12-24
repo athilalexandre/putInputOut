@@ -20,7 +20,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -93,11 +94,22 @@ async function getYouTubeReadable(url) {
     return ytdl(url, {
       filter: 'audioonly',
       quality: quality,
-      highWaterMark: 1 << 25
+      highWaterMark: 1 << 24,
+      dlChunkSize: 1024 * 1024,
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Sec-Fetch-Mode': 'no-cors',
+          'Sec-Fetch-Dest': 'video',
+          'Referer': 'https://www.youtube.com/',
+        }
+      }
     });
   } catch (error) {
     console.error('Erro ao obter stream do YouTube:', error);
-    throw new Error('Falha ao processar vídeo do YouTube');
+    throw new Error('Falha ao processar vídeo do YouTube (403/Forbidden)');
   }
 }
 
@@ -126,11 +138,11 @@ async function searchYouTubeByArtistTitle(artist, title) {
   try {
     const query = `${artist} - ${title}`;
     const results = await ytsr(query, { limit: 5 });
-    
+
     // Filtrar resultados válidos (ignorar lives longas)
-    const validResults = results.items.filter(item => 
-      item.type === 'video' && 
-      item.duration && 
+    const validResults = results.items.filter(item =>
+      item.type === 'video' &&
+      item.duration &&
       item.duration < 600 // Menos de 10 minutos
     );
 
@@ -160,7 +172,7 @@ async function connectToVoiceChannel(guildId, voiceChannelId) {
 
     // Verificar se já existe conexão
     let connection = getVoiceConnection(guildId);
-    
+
     if (!connection) {
       connection = joinVoiceChannel({
         channelId: voiceChannelId,
@@ -204,6 +216,52 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
+// Endpoint para obter a lista de sons
+app.get('/api/sounds', (req, res) => {
+  try {
+    const soundsPath = path.join(process.cwd(), '../web/sounds.json');
+    const fs = require('fs');
+    if (fs.existsSync(soundsPath)) {
+      const data = fs.readFileSync(soundsPath, 'utf8');
+      res.json(JSON.parse(data));
+    } else {
+      res.json([]);
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao ler sons' });
+  }
+});
+
+// Endpoint para atualizar um som (editar nome)
+app.post('/api/sounds/update', (req, res) => {
+  const { oldName, newName, url, secret } = req.body;
+  const SHARED_SECRET = process.env.SHARED_SECRET || 'chave_secreta_123';
+
+  if (secret !== SHARED_SECRET) {
+    return res.status(401).json({ error: 'Secret inválido' });
+  }
+
+  try {
+    const soundsPath = path.join(process.cwd(), '../web/sounds.json');
+    const fs = require('fs');
+    let sounds = [];
+    if (fs.existsSync(soundsPath)) {
+      sounds = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
+    }
+
+    const index = sounds.findIndex(s => s.url === url);
+    if (index !== -1) {
+      sounds[index].name = newName;
+      fs.writeFileSync(soundsPath, JSON.stringify(sounds, null, 2));
+      res.json({ success: true, sounds });
+    } else {
+      res.status(404).json({ error: 'Som não encontrado' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar som' });
+  }
+});
+
 // Endpoint principal para tocar áudio
 app.post('/play', async (req, res) => {
   try {
@@ -221,8 +279,8 @@ app.post('/play', async (req, res) => {
     // Modo de desenvolvimento - simular resposta sem conectar ao Discord
     if (!process.env.DISCORD_TOKEN || process.env.DISCORD_TOKEN === 'seu_discord_bot_token_aqui') {
       console.log('🔧 Modo de desenvolvimento - simulando resposta');
-      return res.json({ 
-        ok: true, 
+      return res.json({
+        ok: true,
         source: 'DEV_MODE',
         message: 'Modo de desenvolvimento - áudio simulado com sucesso'
       });
@@ -244,7 +302,7 @@ app.post('/play', async (req, res) => {
       } else if (isSpotifyTrack(soundUrl)) {
         console.log(`🎵 Processando Spotify: ${soundUrl}`);
         const trackId = soundUrl.split('/track/')[1]?.split('?')[0];
-        
+
         try {
           // Tentar preview do Spotify
           const previewUrl = await getSpotifyPreviewUrl(trackId);
@@ -257,21 +315,38 @@ app.post('/play', async (req, res) => {
           }
         } catch (previewError) {
           console.log('⚠️ Preview do Spotify indisponível, buscando no YouTube...');
-          
+
           // Fallback para YouTube
           const track = await spotifyApi.getTrack(trackId);
           const artist = track.body.artists[0]?.name;
           const title = track.body.name;
-          
+
           const youtubeUrl = await searchYouTubeByArtistTitle(artist, title);
           const youtubeStream = await getYouTubeReadable(youtubeUrl);
           audioResource = ffmpegPcmFromReadable(youtubeStream);
           source = 'SPOTIFY_FALLBACK_YT';
         }
+      } else if (soundUrl.includes(':\\') || require('fs').existsSync(soundUrl)) {
+        // Arquivo local
+        const fs = require('fs');
+        const cleanPath = soundUrl.replace(/^\"|\"$/g, '');
+        console.log(`🎵 Processando arquivo local: ${cleanPath}`);
+        if (fs.existsSync(cleanPath)) {
+          const localStream = fs.createReadStream(cleanPath);
+          audioResource = ffmpegPcmFromReadable(localStream);
+          source = 'LOCAL_FILE';
+        } else {
+          throw new Error('Arquivo local não encontrado');
+        }
       } else {
         // URL direta de áudio
         console.log(`🎵 Processando áudio direto: ${soundUrl}`);
-        const response = await fetch(soundUrl);
+        const response = await fetch(soundUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Referer': 'https://www.soundjay.com/',
+          }
+        });
         if (!response.ok) {
           throw new Error('Falha ao acessar URL de áudio');
         }
@@ -287,7 +362,7 @@ app.post('/play', async (req, res) => {
 
       // Tocar áudio
       player.play(audioResource);
-      
+
       // Log de sucesso
       console.log(`✅ Reproduzindo áudio - Fonte: ${source}, Volume: ${volume || 1}`);
 
@@ -296,17 +371,17 @@ app.post('/play', async (req, res) => {
         console.log(`🎵 Áudio finalizado - Fonte: ${source}`);
       });
 
-      res.json({ 
-        ok: true, 
+      res.json({
+        ok: true,
         source: source,
-        message: source === 'SPOTIFY_FALLBACK_YT' 
+        message: source === 'SPOTIFY_FALLBACK_YT'
           ? 'Sem preview no Spotify — reproduzindo equivalente do YouTube'
           : 'Áudio iniciado com sucesso'
       });
 
     } catch (streamError) {
       console.error('Erro ao processar stream:', streamError);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Falha ao processar áudio',
         details: streamError.message,
         source: source
@@ -315,7 +390,7 @@ app.post('/play', async (req, res) => {
 
   } catch (error) {
     console.error('Erro no endpoint /play:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Erro interno do servidor',
       details: error.message
     });
@@ -323,9 +398,98 @@ app.post('/play', async (req, res) => {
 });
 
 // Inicializar bot Discord
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`🤖 Bot ${client.user.tag} está online!`);
   console.log(`📡 Servidor Express rodando na porta ${PORT}`);
+
+  try {
+    const channelId = '1368286913651544075';
+    const channel = await client.channels.fetch(channelId);
+    if (channel && channel.isTextBased()) {
+      channel.send({
+        content: `🎧 **O Bot de Sons ${client.user.username} está online!**\n\n📌 **Como usar:**\n- Clique no link do Soundboard no site\n- Use \`!help\` aqui no Discord para comandos\n- Ou use \`!play <nome do som>\` (ex: \`!play ratinho\`)\n\n⚠️ *Nota: O som será ouvido apenas para quem estiver no canal de voz "Mansão".*`
+      });
+    }
+  } catch (err) {
+    console.log('⚠️ Erro ao enviar mensagem de boas-vindas:', err.message);
+  }
+});
+
+// Comandos do Discord
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.content.startsWith('!')) return;
+
+  const args = message.content.slice(1).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
+
+  if (command === 'help') {
+    if (args[0] === 'sons') {
+      try {
+        const soundsPath = require('path').join(process.cwd(), '../web/sounds.json');
+        const fs = require('fs');
+        if (fs.existsSync(soundsPath)) {
+          const soundsData = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
+          const soundNames = soundsData.map(s => `• ${s.name}`).join('\n');
+          const chunks = soundNames.match(/[\s\S]{1,1900}/g) || [];
+
+          await message.reply(`🎵 **Sons Disponíveis:**`);
+          for (const chunk of chunks) {
+            await message.channel.send(`\`\`\`\n${chunk}\n\`\`\``);
+          }
+        }
+      } catch (err) {
+        message.reply('❌ Erro ao listar sons.');
+      }
+      return;
+    }
+
+    message.reply({
+      content: `📌 **Comandos do Bot:**\n\n▶️ \`!play <nome ou url>\` - Toca um som ou URL\n⏹️ \`!stop\` - Para a reprodução atual\n📚 \`!help sons\` - Lista todos os sons da biblioteca\n🌐 **Site:** http://localhost:3000`
+    });
+  }
+
+  if (command === 'stop') {
+    const connection = getVoiceConnection(message.guildId);
+    if (connection) {
+      const player = audioPlayers.get(message.guildId);
+      if (player) player.stop();
+      message.reply('⏹️ Reprodução parada.');
+    }
+  }
+
+  if (command === 'play') {
+    const query = args.join(' ');
+    if (!query) return message.reply('❌ Diga o nome do som ou cole um link.');
+
+    message.reply(`🎵 Buscando som: **${query}**...`);
+
+    try {
+      const soundsPath = require('path').join(process.cwd(), '../web/sounds.json');
+      const soundsData = JSON.parse(require('fs').readFileSync(soundsPath, 'utf8'));
+      const foundSound = soundsData.find(s => s.name.toLowerCase().includes(query.toLowerCase()));
+      const soundUrl = foundSound ? foundSound.url : query;
+      const voiceChannelId = '1141073147840430160';
+
+      const response = await fetch(`http://localhost:${PORT}/play`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: process.env.SHARED_SECRET,
+          guildId: message.guildId,
+          voiceChannelId: voiceChannelId,
+          soundUrl: soundUrl,
+          volume: 1
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Erro no bot');
+
+      message.channel.send(`✅ Tocando: **${foundSound ? foundSound.name : query}**`);
+    } catch (err) {
+      message.channel.send(`❌ Erro ao tocar: ${err.message}`);
+    }
+  }
 });
 
 // Login do bot (opcional para desenvolvimento)

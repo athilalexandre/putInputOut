@@ -27,13 +27,16 @@ export default function Home() {
   const [guildId, setGuildId] = useState('')
   const [voiceChannelId, setVoiceChannelId] = useState('')
   const [volume, setVolume] = useState(1)
-  
+
   // Estados para link rápido
   const [quickLink, setQuickLink] = useState('')
-  
-  // Estados para busca
+
+  // Estados para busca e sons
   const [searchTerm, setSearchTerm] = useState('')
-  
+  const [soundList, setSoundList] = useState<Sound[]>([])
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingName, setEditingName] = useState('')
+
   // Estados de UI
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
@@ -57,7 +60,51 @@ export default function Home() {
     if (savedVoiceChannelId) setVoiceChannelId(savedVoiceChannelId)
     if (savedVolume) setVolume(parseFloat(savedVolume))
     if (savedQuickLink) setQuickLink(savedQuickLink)
+    // Carregar sons inicialmente
+    fetchSounds()
   }, [])
+
+  const fetchSounds = async () => {
+    try {
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/api/sounds`)
+      if (response.ok) {
+        const data = await response.json()
+        setSoundList(data)
+      } else {
+        // Fallback para o arquivo local se o bot não estiver online
+        setSoundList(sounds)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar sons do bot:', err)
+      setSoundList(sounds)
+    }
+  }
+
+  const renameSound = async (url: string, newName: string) => {
+    try {
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/api/sounds/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          newName,
+          secret: 'chave_secreta_123'
+        })
+      })
+
+      if (response.ok) {
+        setStatus({ type: 'success', message: '✅ Nome atualizado com sucesso!' })
+        fetchSounds() // Recarregar lista
+        setEditingIndex(null)
+      } else {
+        setStatus({ type: 'error', message: '❌ Erro ao atualizar nome.' })
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: '❌ Erro de conexão com o bot.' })
+    }
+  }
 
   // Salvar configurações no localStorage
   const saveToLocalStorage = (key: string, value: string | number) => {
@@ -126,7 +173,7 @@ export default function Home() {
 
       if (response.ok && result.ok) {
         let message = `✅ ${soundName} iniciado!`
-        
+
         if (result.source === 'SPOTIFY_FALLBACK_YT') {
           message += ' (Sem preview no Spotify — reproduzindo equivalente do YouTube)'
         } else if (result.source === 'YT') {
@@ -139,9 +186,9 @@ export default function Home() {
 
         setStatus({ type: 'success', message })
       } else {
-        setStatus({ 
-          type: 'error', 
-          message: `❌ Erro ao tocar ${soundName}: ${result.error || 'Erro desconhecido'}` 
+        setStatus({
+          type: 'error',
+          message: `❌ Erro ao tocar ${soundName}: ${result.error || 'Erro desconhecido'}`
         })
       }
     } catch (error) {
@@ -182,7 +229,7 @@ export default function Home() {
 
       if (response.ok && result.ok) {
         let message = '✅ Link processado com sucesso!'
-        
+
         if (result.source === 'SPOTIFY_FALLBACK_YT') {
           message += ' (Sem preview no Spotify — reproduzindo equivalente do YouTube)'
         } else if (result.source === 'YT') {
@@ -196,9 +243,9 @@ export default function Home() {
         setStatus({ type: 'success', message })
         saveToLocalStorage('quickLink', quickLink.trim())
       } else {
-        setStatus({ 
-          type: 'error', 
-          message: `❌ Erro ao processar link: ${result.error || 'Erro desconhecido'}` 
+        setStatus({
+          type: 'error',
+          message: `❌ Erro ao processar link: ${result.error || 'Erro desconhecido'}`
         })
       }
     } catch (error) {
@@ -209,7 +256,7 @@ export default function Home() {
   }
 
   // Filtrar sons baseado na busca
-  const filteredSounds = sounds.filter(sound =>
+  const filteredSounds = soundList.filter(sound =>
     sound.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -249,7 +296,7 @@ export default function Home() {
                 Interface web para tocar sons no Discord com suporte a YouTube e Spotify
               </p>
             </div>
-            
+
             {/* User Info */}
             <div className="flex items-center gap-4">
               <div className="text-right">
@@ -275,7 +322,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold mb-4 text-discord-blurple">
                 ⚙️ Configuração do Discord - PutIn PutOut
               </h2>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
@@ -290,7 +337,7 @@ export default function Home() {
                     className="input-field w-full"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
                   <input
@@ -304,7 +351,7 @@ export default function Home() {
                     className="input-field w-full"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2">Volume (0-1)</label>
                   <input
@@ -331,26 +378,25 @@ export default function Home() {
                 >
                   {connectionStatus === 'testing' ? '🔄 Testando...' : '🔗 Test Connection'}
                 </button>
-                
+
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${
-                    connectionStatus === 'connected' ? 'bg-discord-green' :
-                    connectionStatus === 'error' ? 'bg-discord-red' :
-                    connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
-                    'bg-gray-500'
-                  }`} />
+                  <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-discord-green' :
+                      connectionStatus === 'error' ? 'bg-discord-red' :
+                        connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse-slow' :
+                          'bg-gray-500'
+                    }`} />
                   <span className="text-sm text-gray-300">
                     {connectionStatus === 'connected' ? 'Conectado' :
-                     connectionStatus === 'error' ? 'Erro' :
-                     connectionStatus === 'testing' ? 'Testando...' :
-                     'Desconectado'}
+                      connectionStatus === 'error' ? 'Erro' :
+                        connectionStatus === 'testing' ? 'Testando...' :
+                          'Desconectado'}
                   </span>
                 </div>
               </div>
 
               <div className="mt-4 p-3 bg-discord-darker rounded-lg border border-gray-600">
                 <p className="text-sm text-gray-300">
-                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
+                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado),
                   clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
                 </p>
               </div>
@@ -361,7 +407,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold mb-4 text-discord-green">
                 🚀 Link Rápido
               </h2>
-              
+
               <div className="flex gap-4">
                 <input
                   type="url"
@@ -378,10 +424,10 @@ export default function Home() {
                   {isLoading ? '🔄 Processando...' : '▶️ Tocar Link'}
                 </button>
               </div>
-              
+
               <div className="mt-3 p-3 bg-discord-darker rounded-lg border border-gray-600">
                 <p className="text-sm text-gray-300">
-                  <strong>📋 Suportado:</strong> Links diretos (mp3/ogg/wav), YouTube (youtube.com/youtu.be), 
+                  <strong>📋 Suportado:</strong> Links diretos (mp3/ogg/wav), YouTube (youtube.com/youtu.be),
                   Spotify tracks (open.spotify.com/track). Para Spotify sem preview, o sistema busca automaticamente no YouTube.
                 </p>
               </div>
@@ -403,21 +449,55 @@ export default function Home() {
               <h2 className="text-xl font-semibold mb-4 text-discord-fuchsia">
                 📚 Biblioteca de Sons ({filteredSounds.length})
               </h2>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
                 {filteredSounds.map((sound, index) => (
-                  <button
-                    key={index}
-                    onClick={() => playSound(sound.url, sound.name)}
-                    disabled={isLoading || !guildId || !voiceChannelId}
-                    className="btn-secondary text-left h-24 flex flex-col justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
-                  >
-                    <div className="font-medium truncate">{sound.name}</div>
-                    <div className="text-xs text-gray-400 truncate mt-1">
-                      {sound.url.includes('youtube.com') || sound.url.includes('youtu.be') ? '🎥 YouTube' :
-                       sound.url.includes('open.spotify.com') ? '🎵 Spotify' : '🔊 Áudio Direto'}
-                    </div>
-                  </button>
+                  <div key={index} className="relative group">
+                    {editingIndex === index ? (
+                      <div className="btn-secondary h-full flex flex-col gap-2 ring-1 ring-discord-blurple">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') renameSound(sound.url, editingName)
+                            if (e.key === 'Escape') setEditingIndex(null)
+                          }}
+                          className="w-full bg-discord-grayDark border border-discord-grayLighter rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-discord-blurple"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => renameSound(sound.url, editingName)} className="text-[10px] text-green-400 hover:underline">Salvar</button>
+                          <button onClick={() => setEditingIndex(null)} className="text-[10px] text-red-400 hover:underline">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="btn-secondary text-left group hover:scale-[1.02] flex flex-col justify-between h-full min-h-[64px]">
+                        <button
+                          onClick={() => playSound(sound.url, sound.name)}
+                          disabled={isLoading}
+                          className="w-full text-left focus:outline-none"
+                        >
+                          <div className="font-medium truncate group-hover:text-discord-blurple">{sound.name}</div>
+                          <div className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">
+                            {sound.url.includes('youtube') ? 'YouTube' : sound.url.includes('spotify') ? 'Spotify' :
+                              sound.url.includes(':\\') ? 'Local' : 'Direto'}
+                          </div>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingIndex(index)
+                            setEditingName(sound.name)
+                          }}
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white"
+                          title="Renomear"
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -431,13 +511,13 @@ export default function Home() {
             <p className="text-gray-300 mb-8 max-w-md mx-auto">
               Para começar a usar o PutIn PutOut, configure o Guild ID e Voice Channel ID abaixo
             </p>
-            
+
             {/* Configuração inicial */}
             <div className="card max-w-2xl mx-auto">
               <h3 className="text-xl font-semibold mb-4 text-discord-blurple">
                 ⚙️ Configuração Inicial
               </h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Guild ID (Servidor)</label>
@@ -452,7 +532,7 @@ export default function Home() {
                     className="input-field w-full"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2">Voice Channel ID</label>
                   <input
@@ -470,7 +550,7 @@ export default function Home() {
 
               <div className="p-3 bg-discord-darker rounded-lg border border-gray-600">
                 <p className="text-sm text-gray-300">
-                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado), 
+                  <strong>💡 Como obter IDs:</strong> Ative &quot;Developer Mode&quot; no Discord (Configurações → Avançado),
                   clique com botão direito no servidor/canal → &quot;Copiar ID&quot;
                 </p>
               </div>
@@ -480,11 +560,10 @@ export default function Home() {
 
         {/* Status/Toast */}
         {status && (
-          <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg max-w-md z-50 ${
-            status.type === 'success' ? 'bg-discord-green text-black' :
-            status.type === 'error' ? 'bg-discord-red text-white' :
-            'bg-discord-yellow text-black'
-          }`}>
+          <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg max-w-md z-50 ${status.type === 'success' ? 'bg-discord-green text-black' :
+              status.type === 'error' ? 'bg-discord-red text-white' :
+                'bg-discord-yellow text-black'
+            }`}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
                 {status.type === 'success' ? '✅' : status.type === 'error' ? '❌' : 'ℹ️'}
