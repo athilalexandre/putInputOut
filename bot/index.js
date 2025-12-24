@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import path from 'path';
 import fs from 'fs';
+import play from 'play-dl';
 
 import ffmpegPath from 'ffmpeg-static';
 
@@ -15,7 +16,8 @@ import ffmpegPath from 'ffmpeg-static';
 dotenv.config();
 
 // Log para verificar se o código atualizado foi aplicado
-console.log('🚀 [BOT v5] INICIANDO SISTEMA...');
+console.log('🚀 [BOT v6] SISTEMA DE ÁUDIO RESTRUTURADO');
+console.log('🎵 Suporte Spotify: FULL (Tracks, Albums, Playlists)');
 console.log('📡 O Logger de requisições está ATIVO!');
 
 // Configuração do bot Discord
@@ -42,6 +44,15 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
     clientId: process.env.SPOTIFY_CLIENT_ID,
     clientSecret: process.env.SPOTIFY_CLIENT_SECRET
   });
+
+  // Configurar play-dl para usar as mesmas credenciais do Spotify
+  play.setToken({
+    spotify: {
+      client_id: process.env.SPOTIFY_CLIENT_ID,
+      client_secret: process.env.SPOTIFY_CLIENT_SECRET,
+      market: 'BR'
+    }
+  }).catch(err => console.error('⚠️ Erro ao configurar play-dl/Spotify:', err.message));
 }
 
 // Configuração do Express
@@ -114,15 +125,8 @@ function ffmpegPcmFromReadable(readable) {
   return resource;
 }
 
-function isSpotifyTrack(url) {
-  try {
-    const urlObj = new URL(url);
-    const isSpotify = urlObj.hostname.includes('spotify.com');
-    const isTrack = urlObj.pathname.includes('/track/');
-    return isSpotify && isTrack;
-  } catch {
-    return false;
-  }
+function isSpotifyUrl(url) {
+  return url.includes('spotify.com');
 }
 
 // Função para obter preview URL do Spotify
@@ -286,45 +290,74 @@ app.post('/play', async (req, res) => {
     let source = 'DIRECT';
 
     try {
-      if (isSpotifyTrack(soundUrl)) {
-        console.log(`🎵 Processando Spotify: ${soundUrl}`);
-        const trackId = soundUrl.split('/track/')[1]?.split('?')[0];
+      const spCheck = await play.validate(soundUrl);
 
-        // Obter preview do Spotify
-        const previewUrl = await getSpotifyPreviewUrl(trackId);
-        if (previewUrl) {
-          console.log('✅ Preview do Spotify disponível');
-          const response = await fetch(previewUrl);
-          audioResource = ffmpegPcmFromReadable(Readable.fromWeb(response.body));
-          source = 'SPOTIFY_PREVIEW';
-        } else {
-          throw new Error('Este link do Spotify não possui prévia de áudio disponível para bots. Tente outro link.');
+      if (spCheck && spCheck.startsWith('sp_')) {
+        console.log(`🎵 Processando Spotify (${spCheck}): ${soundUrl}`);
+
+        if (play.is_expired()) {
+          await play.refreshToken();
         }
-      } else if ((soundUrl.includes(':\\') || soundUrl.includes('/')) && !soundUrl.startsWith('http')) {
-        // Arquivo local (garantindo que não é uma URL http)
+
+        const spData = await play.spotify(soundUrl);
+        let trackToPlay = null;
+
+        if (spData.type === 'track') {
+          trackToPlay = spData;
+          source = 'SPOTIFY_TRACK';
+        } else if (spData.type === 'album' || spData.type === 'playlist') {
+          trackToPlay = spData.tracks[0];
+          source = `SPOTIFY_${spData.type.toUpperCase()} (Primeira faixa)`;
+        }
+
+        if (trackToPlay) {
+          console.log(`🔍 Buscando áudio para: ${trackToPlay.name}`);
+          const stream = await play.stream(trackToPlay.url, {
+            quality: 2,
+            seek: 0
+          });
+
+          audioResource = createAudioResource(stream.stream, {
+            inputType: stream.type,
+            inlineVolume: true
+          });
+        }
+      } else if ((soundUrl.includes(':\\') || soundUrl.includes('/') || soundUrl.startsWith('.')) && !soundUrl.startsWith('http')) {
+        // Arquivo local
         const cleanPath = soundUrl.replace(/^\"|\"$/g, '');
         console.log(`🎵 Processando arquivo local: ${cleanPath}`);
         if (fs.existsSync(cleanPath)) {
           audioResource = ffmpegPcmFromPath(cleanPath);
           source = 'LOCAL_FILE';
         } else {
-          throw new Error(`Arquivo local não encontrado: ${cleanPath}`);
+          // Tentar no diretório de sons fixo
+          const fixedPath = path.join(process.cwd(), '../bot/sounds', path.basename(cleanPath));
+          if (fs.existsSync(fixedPath)) {
+            audioResource = ffmpegPcmFromPath(fixedPath);
+            source = 'LOCAL_FILE_STATIC';
+          } else {
+            throw new Error(`Arquivo local não encontrado: ${cleanPath}`);
+          }
         }
       } else {
-        // URL direta de áudio
-        console.log(`🎵 Processando áudio direto: ${soundUrl}`);
-        const response = await fetch(soundUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'Referer': 'https://www.soundjay.com/',
-          }
-        });
-        if (!response.ok) {
-          throw new Error('Falha ao acessar URL de áudio');
+        // URL direta ou YouTube (play-dl cuida disso agora)
+        console.log(`🎵 Processando link genérico via play-dl: ${soundUrl}`);
+        const stream = await play.stream(soundUrl).catch(() => null);
+
+        if (stream) {
+          audioResource = createAudioResource(stream.stream, {
+            inputType: stream.type,
+            inlineVolume: true
+          });
+          source = 'EXTERNAL_STREAM';
+        } else {
+          // Fallback para fetch direto se play-dl falhar em links diretos de áudio
+          console.log('⚠️ play-dl não reconheceu o link, tentando fetch direto...');
+          const response = await fetch(soundUrl);
+          if (!response.ok) throw new Error('Falha ao acessar URL de áudio');
+          audioResource = ffmpegPcmFromReadable(Readable.fromWeb(response.body));
+          source = 'DIRECT_FETCH';
         }
-        const audioStream = Readable.fromWeb(response.body);
-        audioResource = ffmpegPcmFromReadable(audioStream);
-        source = 'DIRECT';
       }
 
       // Configurar volume
