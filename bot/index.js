@@ -262,13 +262,10 @@ app.post('/api/sounds/update', (req, res) => {
 // Endpoint principal para tocar áudio
 app.post('/play', async (req, res) => {
   try {
-    const { secret, guildId, voiceChannelId, soundUrl, volume } = req.body;
+    const { guildId, voiceChannelId, soundUrl, volume } = req.body;
 
+    console.log(`🎵 Requisição de áudio recebida: ${soundUrl}`);
     // Validação
-    if (!secret || secret !== process.env.SHARED_SECRET) {
-      return res.status(401).json({ error: 'Secret inválido' });
-    }
-
     if (!guildId || !voiceChannelId || !soundUrl) {
       return res.status(400).json({ error: 'Parâmetros obrigatórios: guildId, voiceChannelId, soundUrl' });
     }
