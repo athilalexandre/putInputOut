@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType, generateDependencyReport } from '@discordjs/voice';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -13,12 +13,17 @@ import play from 'play-dl';
 // Carregar variáveis de ambiente
 dotenv.config();
 
-// Configurar FFmpeg
+// Configurar FFmpeg (Importante para dependências internas)
 if (ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
 }
 
 console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL, YOUTUBE & SPOTIFY');
+console.log('--- VOICE DEPENDENCY REPORT ---');
+console.log(generateDependencyReport());
+console.log('-------------------------------');
+
+// Configuração do bot Discord
 
 // Configuração do bot Discord
 const client = new Client({
@@ -73,42 +78,52 @@ const upload = multer({
 
 // --- FUNÇÕES DE ÁUDIO ---
 
-// 1. Tocar Arquivo Local (Convertendo para Ogg/Opus para máxima compatibilidade)
+// 1. Tocar Arquivo Local (Simples e Direto)
+// 1. Tocar Arquivo Local (Via FFmpeg Opus para garantir compatibilidade)
 function createLocalResource(filePath) {
-  return createAudioResource(filePath, {
-    inputType: StreamType.Arbitrary,
+  console.log(`💿 Criando resource local (FFmpeg): ${filePath}`);
+
+  const ffmpeg = spawn(ffmpegPath, [
+    '-i', filePath,
+    '-f', 'opus',
+    '-c:a', 'libopus',
+    '-ac', '2',
+    '-ar', '48000',
+    'pipe:1'
+  ]);
+
+  ffmpeg.stderr.on('data', d => { }); // Ocultar logs excessivos
+
+  return createAudioResource(ffmpeg.stdout, {
+    inputType: StreamType.OggOpus,
     inlineVolume: true
   });
 }
 
 // 2. Tocar Stream (YouTube/Spotify via play-dl)
 async function createStreamResource(url) {
-  // Detector de tipo
   const type = await play.validate(url);
   let streamInfo;
 
-  if (type === 'yt_video') {
-    streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-  } else if (type === 'sp_track') {
-    if (play.is_expired()) await play.refreshToken();
-    streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-  } else if (type === 'sp_playlist') {
-    // Para playlist, pegamos a primeira musica (ou lógica futura de fila)
-    // Por simplicidade neste endpoint stateless, tocamos a primeira info
-    // Nota: Suporte a playlist total requereria um sistema de Queue no bot.
-    // Vamos tratar como erro ou pegar o primeiro track.
-    const playlist = await play.spotify(url);
-    const firstTrack = playlist.fetched_tracks.get('1');
-    streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
-  } else {
-    // Tentar direct stream ou falhar
-    streamInfo = await play.stream(url, { discordPlayerCompatibility: true }).catch(async () => {
-      // Fallback para MyInstants/Direct via FFmpeg se play-dl falhar
-      return null;
-    });
+  try {
+    if (type === 'yt_video') {
+      streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+    } else if (type === 'sp_track') {
+      if (play.is_expired()) await play.refreshToken();
+      streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+    } else if (type === 'sp_playlist') {
+      const playlist = await play.spotify(url);
+      const firstTrack = playlist.fetched_tracks.get('1');
+      streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
+    }
+  } catch (e) {
+    console.error('Erro play-dl:', e);
+    return null;
   }
 
   if (streamInfo) {
+    // play-dl streams are already compatible (opus-ish), but often specifying StreamType helps.
+    // Usually inputType: streamInfo.type works best.
     return createAudioResource(streamInfo.stream, {
       inputType: streamInfo.type,
       inlineVolume: true
@@ -117,11 +132,11 @@ async function createStreamResource(url) {
   return null;
 }
 
-// 3. Resolver MyInstants (Fallback manual)
+// 3. Resolver MyInstants/Direct
 async function resolveAndCreateDirectResource(url) {
   let targetUrl = url;
 
-  // Lógica MyInstants
+  // MyInstants Scraper rapidinho
   if (url.includes('myinstants.com') && !url.endsWith('.mp3')) {
     try {
       const response = await fetch(url);
@@ -134,25 +149,9 @@ async function resolveAndCreateDirectResource(url) {
     } catch (e) { console.error('Erro MyInstants:', e); }
   }
 
-  // Tocar direto via FFmpeg (Stream Arbitrary lida com remote? Nem sempre bem. Melhor baixar via stream)
-  // Mas createAudioResource suporta URL http direta se o ffmpeg estiver no path.
-  // Vamos forçar o uso do FFmpeg para garantir.
-
-  const ffmpeg = spawn(ffmpegPath, [
-    '-i', targetUrl,
-    '-f', 'opus', // Usar Opus container Ogg é o melhor para Discord
-    '-c:a', 'libopus',
-    '-ac', '2',
-    '-ar', '48000',
-    'pipe:1' // Output para stdout
-  ]);
-
-  ffmpeg.stderr.on('data', () => { }); // Ignorar logs do ffmpeg para limpar console
-
-  return createAudioResource(ffmpeg.stdout, {
-    inputType: StreamType.OggOpus,
-    inlineVolume: true
-  });
+  // Tocar via URL direta; createAudioResource lida com http/https usando ffmpeg por trás
+  console.log(`🌐 Stream Remoto Direto: ${targetUrl}`);
+  return createAudioResource(targetUrl, { inlineVolume: true });
 }
 
 // 4. Gerenciador de Conexão
@@ -221,6 +220,14 @@ app.post('/play', async (req, res) => {
 
       player.on('error', error => {
         console.error('❌ Player Error:', error.message);
+      });
+
+      player.on(AudioPlayerStatus.Playing, () => {
+        console.log('▶️ Player mudou para: PLAYING');
+      });
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        console.log('⏹️ Player mudou para: IDLE');
       });
     }
 
