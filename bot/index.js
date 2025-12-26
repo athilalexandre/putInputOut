@@ -20,6 +20,22 @@ if (ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
 }
 
+// Configurar cookies do YouTube para ytdl-core
+const cookiesPath = path.join(process.cwd(), '../www.youtube.com_cookies.txt');
+let ytdlAgent = null;
+
+if (fs.existsSync(cookiesPath)) {
+  try {
+    const cookies = ytdl.createAgent(undefined, cookiesPath);
+    ytdlAgent = cookies;
+    console.log('🍪 Cookies do YouTube carregados com sucesso!');
+  } catch (e) {
+    console.error('⚠️ Erro ao carregar cookies:', e.message);
+  }
+} else {
+  console.log('⚠️ Arquivo de cookies não encontrado:', cookiesPath);
+}
+
 console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL, YOUTUBE & SPOTIFY');
 console.log('--- VOICE DEPENDENCY REPORT ---');
 console.log(generateDependencyReport());
@@ -110,18 +126,20 @@ async function createStreamResource(url) {
       console.log('🔗 YouTube detectado (ytdl-core)');
 
       try {
-        // Adicionar opções para evitar bloqueio
-        const stream = ytdl(url, {
+        // Adicionar opções para evitar bloqueio (com cookies se disponível)
+        const ytdlOptions = {
           filter: 'audioonly',
-          quality: 'lowestaudio', // Usar qualidade mais baixa para evitar bloqueio
+          quality: 'lowestaudio',
           highWaterMark: 1 << 25,
-          requestOptions: {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept-Language': 'en-US,en;q=0.9',
-            }
-          }
-        });
+        };
+
+        // Usar agent com cookies se disponível
+        if (ytdlAgent) {
+          ytdlOptions.agent = ytdlAgent;
+          console.log('🍪 Usando cookies para YouTube');
+        }
+
+        const stream = ytdl(url, ytdlOptions);
 
         stream.on('error', (err) => {
           console.error('❌ Erro no stream YTDL:', err.message);
