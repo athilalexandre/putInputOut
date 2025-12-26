@@ -9,6 +9,8 @@ import fs from 'fs';
 import multer from 'multer';
 import ffmpegPath from 'ffmpeg-static';
 import play from 'play-dl';
+import ytdl from '@distube/ytdl-core';
+import 'opusscript'; // Force OpusScript registration if native fail
 
 // Carregar variáveis de ambiente
 dotenv.config();
@@ -80,54 +82,66 @@ const upload = multer({
 
 // 1. Tocar Arquivo Local (Simples e Direto)
 // 1. Tocar Arquivo Local (Via FFmpeg Opus para garantir compatibilidade)
+// 1. Tocar Arquivo Local (Via FFmpeg PCM s16le - Mais compatível se Ogg falhar)
 function createLocalResource(filePath) {
-  console.log(`💿 Criando resource local (FFmpeg): ${filePath}`);
+  console.log(`💿 Criando resource local (PCM s16le): ${filePath}`);
 
   const ffmpeg = spawn(ffmpegPath, [
     '-i', filePath,
-    '-f', 'opus',
-    '-c:a', 'libopus',
-    '-ac', '2',
-    '-ar', '48000',
+    '-f', 's16le', // Raw PCM
+    '-ac', '2',    // 2 Channels
+    '-ar', '48000',// 48khz
     'pipe:1'
   ]);
 
-  ffmpeg.stderr.on('data', d => { }); // Ocultar logs excessivos
+  ffmpeg.stderr.on('data', d => { console.log(`FFmpeg Log: ${d}`); });
 
   return createAudioResource(ffmpeg.stdout, {
-    inputType: StreamType.OggOpus,
+    inputType: StreamType.Raw, // Importante: Raw PCM
     inlineVolume: true
   });
 }
 
-// 2. Tocar Stream (YouTube/Spotify via play-dl)
+// 2. Tocar Stream (YouTube/Spotify via ytdl-core/play-dl)
 async function createStreamResource(url) {
-  const type = await play.validate(url);
-  let streamInfo;
-
   try {
-    if (type === 'yt_video') {
-      streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-    } else if (type === 'sp_track') {
+    // 1. Tentar YouTube com @distube/ytdl-core
+    if (ytdl.validateURL(url)) {
+      console.log('🔗 YouTube detectado (ytdl-core)');
+      const stream = ytdl(url, {
+        filter: 'audioonly',
+        quality: 'highestaudio',
+        highWaterMark: 1 << 25
+      });
+      return createAudioResource(stream, { inlineVolume: true });
+    }
+
+    // 2. Fallback para Spotify com play-dl
+    const type = await play.validate(url);
+    if (type === 'sp_track' || type === 'sp_playlist') {
       if (play.is_expired()) await play.refreshToken();
-      streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-    } else if (type === 'sp_playlist') {
-      const playlist = await play.spotify(url);
-      const firstTrack = playlist.fetched_tracks.get('1');
-      streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
+      let streamInfo;
+
+      if (type === 'sp_playlist') {
+        const playlist = await play.spotify(url);
+        const firstTrack = playlist.fetched_tracks.get('1');
+        if (firstTrack) {
+          streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
+        }
+      } else {
+        streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+      }
+
+      if (streamInfo) {
+        return createAudioResource(streamInfo.stream, {
+          inputType: streamInfo.type,
+          inlineVolume: true
+        });
+      }
     }
   } catch (e) {
-    console.error('Erro play-dl:', e);
+    console.error('❌ Erro no Stream:', e.message);
     return null;
-  }
-
-  if (streamInfo) {
-    // play-dl streams are already compatible (opus-ish), but often specifying StreamType helps.
-    // Usually inputType: streamInfo.type works best.
-    return createAudioResource(streamInfo.stream, {
-      inputType: streamInfo.type,
-      inlineVolume: true
-    });
   }
   return null;
 }
@@ -159,17 +173,42 @@ async function getOrJoinConnection(guildId, channelId, adapterCreator) {
   let connection = getVoiceConnection(guildId);
 
   if (!connection) {
+    console.log(`🔌 Iniciando nova conexão de voz no canal: ${channelId}`);
     connection = joinVoiceChannel({
       channelId: channelId,
       guildId: guildId,
-      adapterCreator: adapterCreator
+      adapterCreator: adapterCreator,
+      selfDeaf: false,
+      selfMute: false
+    });
+
+    connection.on(VoiceConnectionStatus.Ready, () => {
+      console.log('✅ Conexão de voz: READY (Pronto para transmitir)');
+    });
+
+    connection.on(VoiceConnectionStatus.Signalling, () => {
+      console.log('⚠️ Conexão de voz: SIGNALLING (Negociando)');
+    });
+
+    connection.on(VoiceConnectionStatus.Connecting, () => {
+      console.log('🔄 Conexão de voz: CONNECTING');
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
+      console.log('❌ Conexão de voz: DISCONNECTED');
       try { connection.destroy(); } catch (e) { }
       voiceConnections.delete(guildId);
       audioPlayers.delete(guildId);
     });
+
+    // Debug networking
+    connection.on('error', (error) => {
+      console.error('🔥 Erro na conexão de voz:', error);
+    });
+  } else {
+    // Se já existe, verificar estado
+    console.log(`ℹ️ Conexão existente. Estado: ${connection.state.status}`);
+    // Se o canal mudou, reconecta? Por enquanto, assume que está certo ou o usuario reconecta.
   }
 
   return connection;
@@ -291,6 +330,14 @@ client.on('messageCreate', async (msg) => {
 });
 
 if (process.env.DISCORD_TOKEN) client.login(process.env.DISCORD_TOKEN);
+
+// Tratamento de erros globais
+process.on('uncaughtException', (err) => {
+  console.error('🔥 CRITICAL ERROR (Uncaught):', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('🔥 CRITICAL ERROR (Unhandled Rejection):', reason);
+});
 
 app.listen(PORT, () => {
   console.log(`🔊 SERVER AUDIO ONLINE NA PORTA ${PORT}`);
