@@ -108,12 +108,46 @@ async function createStreamResource(url) {
     // 1. Tentar YouTube com @distube/ytdl-core
     if (ytdl.validateURL(url)) {
       console.log('🔗 YouTube detectado (ytdl-core)');
-      const stream = ytdl(url, {
-        filter: 'audioonly',
-        quality: 'highestaudio',
-        highWaterMark: 1 << 25
-      });
-      return createAudioResource(stream, { inlineVolume: true });
+
+      try {
+        // Adicionar opções para evitar bloqueio
+        const stream = ytdl(url, {
+          filter: 'audioonly',
+          quality: 'lowestaudio', // Usar qualidade mais baixa para evitar bloqueio
+          highWaterMark: 1 << 25,
+          requestOptions: {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+            }
+          }
+        });
+
+        stream.on('error', (err) => {
+          console.error('❌ Erro no stream YTDL:', err.message);
+        });
+
+        return createAudioResource(stream, {
+          inputType: StreamType.Arbitrary,
+          inlineVolume: true
+        });
+      } catch (ytErr) {
+        console.error('❌ Falha YTDL:', ytErr.message);
+        // Fallback: tentar play-dl para YouTube
+        console.log('🔄 Tentando fallback com play-dl...');
+        try {
+          const streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+          if (streamInfo) {
+            return createAudioResource(streamInfo.stream, {
+              inputType: streamInfo.type,
+              inlineVolume: true
+            });
+          }
+        } catch (playErr) {
+          console.error('❌ Fallback play-dl também falhou:', playErr.message);
+        }
+        return null;
+      }
     }
 
     // 2. Fallback para Spotify com play-dl
@@ -237,6 +271,79 @@ app.post('/api/sounds/upload', upload.single('audio'), (req, res) => {
     fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Endpoint para atualizar nome de um som
+app.post('/api/sounds/update', (req, res) => {
+  const { url, newName } = req.body;
+  console.log(`✏️ Update Sound: ${url} -> ${newName}`);
+
+  if (!url || !newName) {
+    return res.status(400).json({ error: 'Missing url or newName' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    if (!fs.existsSync(p)) {
+      return res.status(404).json({ error: 'sounds.json não encontrado' });
+    }
+
+    let sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+    const soundIndex = sounds.findIndex(s => s.url === url);
+
+    if (soundIndex === -1) {
+      return res.status(404).json({ error: 'Som não encontrado' });
+    }
+
+    sounds[soundIndex].name = newName;
+    fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
+
+    console.log(`✅ Som atualizado: ${newName}`);
+    res.json({ success: true, sound: sounds[soundIndex] });
+  } catch (e) {
+    console.error('❌ Erro ao atualizar som:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint para deletar um som (requer senha)
+const DELETE_PASSWORD = '12345';
+
+app.delete('/api/sounds/delete', (req, res) => {
+  const { url, password } = req.body;
+  console.log(`🗑️ Delete Sound: ${url}`);
+
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url' });
+  }
+
+  // Verificar senha
+  if (password !== DELETE_PASSWORD) {
+    console.log('❌ Senha incorreta para deletar');
+    return res.status(401).json({ error: 'Senha incorreta' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    if (!fs.existsSync(p)) {
+      return res.status(404).json({ error: 'sounds.json não encontrado' });
+    }
+
+    let sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+    const filteredSounds = sounds.filter(s => s.url !== url);
+
+    if (filteredSounds.length === sounds.length) {
+      return res.status(404).json({ error: 'Som não encontrado' });
+    }
+
+    fs.writeFileSync(p, JSON.stringify(filteredSounds, null, 2));
+
+    console.log(`✅ Som deletado`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Erro ao deletar som:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/play', async (req, res) => {
