@@ -20,21 +20,8 @@ if (ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
 }
 
-// Configurar cookies do YouTube para ytdl-core
-const cookiesPath = path.join(process.cwd(), '../www.youtube.com_cookies.txt');
-let ytdlAgent = null;
-
-if (fs.existsSync(cookiesPath)) {
-  try {
-    const cookies = ytdl.createAgent(undefined, cookiesPath);
-    ytdlAgent = cookies;
-    console.log('🍪 Cookies do YouTube carregados com sucesso!');
-  } catch (e) {
-    console.error('⚠️ Erro ao carregar cookies:', e.message);
-  }
-} else {
-  console.log('⚠️ Arquivo de cookies não encontrado:', cookiesPath);
-}
+// Nota: Cookies removidos pois createAgent não está disponível nesta versão
+// Se necessário no futuro, considerar usar yt-dlp como alternativa
 
 console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL, YOUTUBE & SPOTIFY');
 console.log('--- VOICE DEPENDENCY REPORT ---');
@@ -118,84 +105,94 @@ function createLocalResource(filePath) {
   });
 }
 
-// 2. Tocar Stream (YouTube/Spotify via ytdl-core/play-dl)
+// 2. Tocar Stream (YouTube/Spotify via yt-dlp local)
+// yt-dlp.exe está na pasta do bot
+const ytdlpPath = path.join(process.cwd(), 'yt-dlp.exe');
+
 async function createStreamResource(url) {
+  // Verificar se é YouTube ou Spotify
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  const isSpotify = url.includes('spotify.com');
+
+  if (!isYouTube && !isSpotify) {
+    console.log('⚠️ URL não é YouTube nem Spotify');
+    return null;
+  }
+
+  console.log(`🔗 ${isYouTube ? 'YouTube' : 'Spotify'} detectado`);
+
+  // Verificar se yt-dlp existe
+  if (!fs.existsSync(ytdlpPath)) {
+    console.error('❌ yt-dlp.exe não encontrado em:', ytdlpPath);
+    console.error('Por favor, baixe de: https://github.com/yt-dlp/yt-dlp/releases');
+    return null;
+  }
+
   try {
-    // 1. Tentar YouTube com @distube/ytdl-core
-    if (ytdl.validateURL(url)) {
-      console.log('🔗 YouTube detectado (ytdl-core)');
+    // Argumentos do yt-dlp
+    const args = [
+      '-f', 'bestaudio/best',
+      '-o', '-',  // Output para stdout
+      '--no-playlist',
+      '--no-warnings',
+    ];
 
-      try {
-        // Adicionar opções para evitar bloqueio (com cookies se disponível)
-        const ytdlOptions = {
-          filter: 'audioonly',
-          quality: 'lowestaudio',
-          highWaterMark: 1 << 25,
-        };
-
-        // Usar agent com cookies se disponível
-        if (ytdlAgent) {
-          ytdlOptions.agent = ytdlAgent;
-          console.log('🍪 Usando cookies para YouTube');
-        }
-
-        const stream = ytdl(url, ytdlOptions);
-
-        stream.on('error', (err) => {
-          console.error('❌ Erro no stream YTDL:', err.message);
-        });
-
-        return createAudioResource(stream, {
-          inputType: StreamType.Arbitrary,
-          inlineVolume: true
-        });
-      } catch (ytErr) {
-        console.error('❌ Falha YTDL:', ytErr.message);
-        // Fallback: tentar play-dl para YouTube
-        console.log('🔄 Tentando fallback com play-dl...');
-        try {
-          const streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-          if (streamInfo) {
-            return createAudioResource(streamInfo.stream, {
-              inputType: streamInfo.type,
-              inlineVolume: true
-            });
-          }
-        } catch (playErr) {
-          console.error('❌ Fallback play-dl também falhou:', playErr.message);
-        }
-        return null;
-      }
+    // Para Spotify, yt-dlp pode buscar no YouTube automaticamente
+    if (isSpotify) {
+      // yt-dlp suporta Spotify nativamente (busca no YouTube)
+      console.log('🎵 Buscando Spotify no YouTube via yt-dlp...');
     }
 
-    // 2. Fallback para Spotify com play-dl
-    const type = await play.validate(url);
-    if (type === 'sp_track' || type === 'sp_playlist') {
-      if (play.is_expired()) await play.refreshToken();
-      let streamInfo;
+    args.push(url);
 
-      if (type === 'sp_playlist') {
-        const playlist = await play.spotify(url);
-        const firstTrack = playlist.fetched_tracks.get('1');
-        if (firstTrack) {
-          streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
-        }
-      } else {
-        streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
-      }
+    console.log(`▶️ Executando: ${ytdlpPath} ${args.join(' ')}`);
 
-      if (streamInfo) {
-        return createAudioResource(streamInfo.stream, {
-          inputType: streamInfo.type,
-          inlineVolume: true
-        });
+    const ytdlp = spawn(ytdlpPath, args);
+
+    // Usar FFmpeg para converter para PCM
+    const ffmpeg = spawn(ffmpegPath, [
+      '-i', 'pipe:0',
+      '-f', 's16le',
+      '-ac', '2',
+      '-ar', '48000',
+      '-loglevel', 'error',
+      'pipe:1'
+    ]);
+
+    // Pipe yt-dlp -> FFmpeg
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    // Logging
+    ytdlp.stderr.on('data', d => {
+      const msg = d.toString().trim();
+      if (msg) console.log(`yt-dlp: ${msg}`);
+    });
+
+    ytdlp.on('error', (err) => {
+      console.error('❌ Erro ao executar yt-dlp:', err.message);
+    });
+
+    ytdlp.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        console.log(`⚠️ yt-dlp encerrou com código: ${code}`);
       }
-    }
+    });
+
+    ffmpeg.stderr.on('data', d => {
+      const msg = d.toString().trim();
+      if (msg && !msg.includes('time=')) console.log(`FFmpeg: ${msg}`);
+    });
+
+    // Retornar o resource do FFmpeg
+    return createAudioResource(ffmpeg.stdout, {
+      inputType: StreamType.Raw,
+      inlineVolume: true
+    });
+
   } catch (e) {
     console.error('❌ Erro no Stream:', e.message);
     return null;
   }
-  return null;
 }
 
 // 3. Resolver MyInstants/Direct
