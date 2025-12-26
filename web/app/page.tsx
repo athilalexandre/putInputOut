@@ -41,6 +41,15 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle')
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadName, setUploadName] = useState('')
+
+  // Estados para delete
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [deleteUrl, setDeleteUrl] = useState('')
+  const [deletePassword, setDeletePassword] = useState('')
 
   // Verificar autenticação
   useEffect(() => {
@@ -179,19 +188,7 @@ export default function Home() {
       const result: PlayResponse = await response.json()
 
       if (response.ok && result.ok) {
-        let message = `✅ ${soundName} iniciado!`
-
-        if (result.source === 'SPOTIFY_FALLBACK_YT') {
-          message += ' (Sem preview no Spotify — reproduzindo equivalente do YouTube)'
-        } else if (result.source === 'YT') {
-          message += ' (YouTube)'
-        } else if (result.source === 'SPOTIFY_PREVIEW') {
-          message += ' (Spotify Preview)'
-        } else if (result.source === 'DIRECT') {
-          message += ' (Áudio direto)'
-        }
-
-        setStatus({ type: 'success', message })
+        setStatus({ type: 'success', message: '✅ Link iniciado com sucesso!' })
       } else {
         setStatus({
           type: 'error',
@@ -205,7 +202,6 @@ export default function Home() {
     }
   }
 
-  // Tocar link rápido
   const playQuickLink = async () => {
     if (!quickLink.trim()) {
       setStatus({ type: 'error', message: 'Cole um link no campo &quot;Link Rápido&quot;' })
@@ -257,6 +253,77 @@ export default function Home() {
     }
   }
 
+  const handleUpload = async () => {
+    if (!uploadFile) {
+      setStatus({ type: 'error', message: 'Selecione um arquivo primeiro' })
+      return
+    }
+
+    setIsLoading(true)
+    setStatus({ type: 'info', message: '📤 Fazendo upload do som...' })
+
+    const formData = new FormData()
+    formData.append('audio', uploadFile)
+    formData.append('name', uploadName)
+
+    try {
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/api/sounds/upload`, {
+        method: 'POST',
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: formData
+      })
+
+      if (response.ok) {
+        setStatus({ type: 'success', message: '✅ Upload concluído com sucesso!' })
+        setIsUploadOpen(false)
+        setUploadFile(null)
+        setUploadName('')
+        fetchSounds()
+      } else {
+        const errorData = await response.json()
+        setStatus({ type: 'error', message: `❌ Erro no upload: ${errorData.error || 'Erro desconhecido'}` })
+      }
+    } catch (err) {
+      console.error('Erro no upload:', err)
+      setStatus({ type: 'error', message: '❌ Erro de conexão com o bot durante o upload.' })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Função para confirmar delete
+  const confirmDelete = async () => {
+    if (!deletePassword) return;
+
+    try {
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/api/sounds/delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({ url: deleteUrl, password: deletePassword })
+      })
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setStatus({ type: 'success', message: '✅ Som deletado com sucesso!' })
+        setIsDeleteOpen(false)
+        setDeletePassword('')
+        fetchSounds()
+      } else {
+        setStatus({ type: 'error', message: `❌ Erro ao deletar: ${data.error}` })
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: '❌ Erro de conexão com o bot.' })
+    }
+  }
+
   // Filtrar sons baseado na busca
   const filteredSounds = soundList.filter((sound: Sound) =>
     sound.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -304,8 +371,14 @@ export default function Home() {
               </div>
             </div>
 
-            {/* User Info */}
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsHelpOpen(true)}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-discord-grayLighter hover:text-white transition-all text-xs font-bold uppercase tracking-wider border border-white/5"
+              >
+                ❓ Ajuda
+              </button>
+
               <div className="text-right hidden sm:block">
                 <p className="text-[10px] text-discord-grayLighter uppercase font-bold">Logado como</p>
                 <p className="text-sm font-semibold text-white">{session?.user?.username}</p>
@@ -420,18 +493,18 @@ export default function Home() {
                       type="url"
                       value={quickLink}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
-                      placeholder="Spotify Track ou Link de Áudio (MP3/WAV)..."
-                      className="input-field w-full text-sm"
+                      placeholder="https://www.myinstants.com/pt/instant/..."
+                      className="input-field w-full text-sm !border-discord-green/30 focus:!border-discord-green"
                     />
                     <button
                       onClick={playQuickLink}
-                      disabled={!quickLink.trim() || isLoading || !guildId || !voiceChannelId}
-                      className="btn-success w-full"
+                      disabled={!quickLink || isLoading}
+                      className="btn-primary w-full !bg-discord-green hover:!bg-opacity-90 !text-white !py-3 !text-sm !font-bold"
                     >
-                      {isLoading ? '🔄 Processando...' : '▶️ Tocar Agora'}
+                      {isLoading ? 'Carregando...' : '▶ Tocar Agora'}
                     </button>
-                    <p className="text-[10px] text-discord-grayLighter text-center italic">
-                      Suporta links diretos e Spotify (apenas músicas com prévia)
+                    <p className="text-[10px] text-center text-gray-500 mt-2 font-medium">
+                      Suporta links do MyInstants e arquivos MP3/WAV diretos.
                     </p>
                   </div>
                 </div>
@@ -457,9 +530,17 @@ export default function Home() {
                     <h2 className="text-xl font-bold flex items-center gap-2 text-discord-fuchsia">
                       <span className="opacity-70">📚</span> Biblioteca de Áudio
                     </h2>
-                    <span className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-gray-400 uppercase tracking-widest border border-white/5">
-                      {filteredSounds.length} Sons Disponíveis
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setIsUploadOpen(true)}
+                        className="btn-primary !py-1.5 !px-3 !text-[11px] !bg-discord-fuchsia/10 !text-discord-fuchsia !border-discord-fuchsia/20 hover:!bg-discord-fuchsia hover:!text-white"
+                      >
+                        + Upload Sound
+                      </button>
+                      <span className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-gray-400 uppercase tracking-widest border border-white/5">
+                        {filteredSounds.length} Sons Disponíveis
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto max-h-[700px] pr-2 custom-scrollbar">
@@ -510,10 +591,22 @@ export default function Home() {
                                 setEditingIndex(index)
                                 setEditingName(sound.name)
                               }}
-                              className="absolute top-3 right-3 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-white hover:bg-white/10 rounded-lg"
+                              className="absolute top-3 right-12 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-white hover:bg-white/10 rounded-lg"
                               title="Renomear"
                             >
                               ✏️
+                            </button>
+
+                            <button
+                              onClick={(e: React.MouseEvent) => {
+                                e.stopPropagation()
+                                setDeleteUrl(sound.url)
+                                setIsDeleteOpen(true)
+                              }}
+                              className="absolute top-3 right-3 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-500 hover:bg-white/10 rounded-lg"
+                              title="Deletar"
+                            >
+                              🗑️
                             </button>
                           </div>
                         )}
@@ -584,7 +677,151 @@ export default function Home() {
           </div>
         )}
 
-        {/* Status/Toast Premium */}
+        {/* Modais (devem estar aqui dentro) */}
+        {isHelpOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-discord-dark w-full max-w-2xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-discord-blurple/10 to-transparent">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <span className="text-discord-blurple">❓</span> Central de Ajuda
+                </h3>
+                <button onClick={() => setIsHelpOpen(false)} className="text-gray-400 hover:text-white text-2xl">×</button>
+              </div>
+
+              <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                <section>
+                  <h4 className="text-discord-blurple font-bold uppercase text-xs tracking-widest mb-3">1. Como entrar no site e conectar?</h4>
+                  <div className="bg-white/5 p-4 rounded-2xl space-y-3 text-sm text-discord-grayLighter">
+                    <p>• Obtenha o seu <strong>Server ID</strong> clicando com o botão direito no ícone do servidor no Discord.</p>
+                    <p>• Obtenha o <strong>Channel ID</strong> clicando com o botão direito no canal de voz.</p>
+                    <p>• <em>Nota: Você precisa do &quot;Modo Desenvolvedor&quot; ativo nas Configurações &gt; Avançado do seu Discord.</em></p>
+                    <p>• Clique em <strong>Testar Conexão</strong>. Se o dot ficar <span className="text-discord-green">Verde</span>, você está pronto!</p>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-discord-green font-bold uppercase text-xs tracking-widest mb-3">2. Como tocar os áudios?</h4>
+                  <div className="bg-white/5 p-4 rounded-2xl space-y-3 text-sm text-discord-grayLighter">
+                    <p>• <strong>Biblioteca:</strong> Basta clicar no card de qualquer som na lista.</p>
+                    <p>• <strong>Link Rápido:</strong> Cole uma URL do YouTube, Spotify ou link direto (MP3/WAV) e clique em <strong>Tocar Agora</strong>.</p>
+                    <p>• <strong>Spotify:</strong> Agora suportamos faixas completas, álbuns e playlists!</p>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-discord-fuchsia font-bold uppercase text-xs tracking-widest mb-3">3. Como gerenciar seus sons?</h4>
+                  <div className="bg-white/5 p-4 rounded-2xl space-y-3 text-sm text-discord-grayLighter">
+                    <p>• <strong>Renomear:</strong> Passe o mouse sobre um som na biblioteca e clique no ícone de lápis ✏️.</p>
+                    <p>• <strong>Upload:</strong> Clique no botão <strong>+ Upload Sound</strong> na biblioteca para enviar um arquivo MP3 do seu PC.</p>
+                  </div>
+                </section>
+              </div>
+
+              <div className="p-6 bg-discord-darker border-t border-white/5 flex justify-end">
+                <button onClick={() => setIsHelpOpen(false)} className="btn-primary">Entendi, valeu! 🚀</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isUploadOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-discord-dark w-full max-w-md rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-xl font-bold">📤 Upload de Áudio</h3>
+                <button onClick={() => setIsUploadOpen(false)} className="text-gray-400 hover:text-white text-2xl">×</button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div>
+                  <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-2 ml-1">Nome do Som</label>
+                  <input
+                    type="text"
+                    value={uploadName}
+                    onChange={(e) => setUploadName(e.target.value)}
+                    placeholder="Ex: Ratinhooo"
+                    className="input-field w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-2 ml-1">Arquivo (MP3, WAV, OGG)</label>
+                  <div className="relative group">
+                    <input
+                      type="file"
+                      id="audio-upload"
+                      accept=".mp3,.wav,.ogg,.m4a"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="audio-upload"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/10 rounded-2xl hover:border-discord-blurple/50 hover:bg-white/5 cursor-pointer transition-all"
+                    >
+                      <span className="text-3xl mb-2">📁</span>
+                      <span className="text-sm font-medium text-gray-400">
+                        {uploadFile ? uploadFile.name : 'Clique para selecionar arquivo'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleUpload}
+                  disabled={isLoading || !uploadFile}
+                  className="btn-primary w-full py-4"
+                >
+                  {isLoading ? '📤 Enviando...' : 'Confirmar Upload 🚀'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isDeleteOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-discord-dark w-full max-w-sm rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-red-500">🗑️ Deletar Som?</h3>
+                <button onClick={() => setIsDeleteOpen(false)} className="text-gray-400 hover:text-white text-2xl">×</button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <p className="text-gray-300 text-sm">
+                  Tem certeza que deseja remover este som da biblioteca? Essa ação não pode ser desfeita.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-2 ml-1">Senha de Administrador</label>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Digite a senha..."
+                    className="input-field w-full !border-red-500/30 focus:!border-red-500"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setIsDeleteOpen(false)}
+                    className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={!deletePassword}
+                    className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Deletar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {status && (
           <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-right-10 duration-300">
             <div className={`p-1 rounded-2xl shadow-2xl backdrop-blur-xl border border-white/10 ${status.type === 'success' ? 'bg-discord-green/20' :
@@ -612,6 +849,6 @@ export default function Home() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   )
 }
