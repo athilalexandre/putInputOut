@@ -456,36 +456,79 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
               {/* Coluna Esquerda: Controles */}
-              <div className="lg:col-span-4 space-y-6">
-                {/* Configuração do Discord */}
-                <div className="card">
-                  <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-discord-blurple">
-                    <span className="opacity-70">⚙️</span> Configurações
-                  </h2>
+              <div className="lg:col-span-4 space-y-4">
 
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Server ID</label>
-                      <input
-                        type="text"
-                        value={guildId}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGuildId(e.target.value)}
-                        className="input-field w-full text-sm font-medium"
-                      />
-                    </div>
+                {/* 🎵 PLAYER VISUAL - DESTAQUE PRINCIPAL */}
+                <AudioVisualizer
+                  guildId={guildId}
+                  botEndpoint={process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
+                />
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Channel ID</label>
-                      <input
-                        type="text"
-                        value={voiceChannelId}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVoiceChannelId(e.target.value)}
-                        className="input-field w-full text-sm font-medium"
-                      />
-                    </div>
+                {/* 🎮 CONTROLES DO PLAYER */}
+                <div className="card !bg-gradient-to-br from-[#1a1a2e] via-discord-dark to-[#16213e] !border-purple-500/20">
+                  {/* Input de Link */}
+                  <div className="relative mb-4">
+                    <input
+                      type="url"
+                      value={quickLink}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
+                      placeholder="Cole um link do YouTube, Spotify, MyInstants..."
+                      className="input-field w-full text-sm !bg-black/30 !border-purple-500/20 focus:!border-purple-500 pr-12"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 text-lg">🔗</span>
+                  </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-discord-grayLighter uppercase mb-1.5 ml-1">Volume do Bot</label>
+                  {/* Botão Principal de Play */}
+                  <button
+                    onClick={playQuickLink}
+                    disabled={!quickLink || isLoading}
+                    className="w-full py-4 rounded-2xl font-bold text-white text-lg transition-all duration-300 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:from-purple-500 hover:via-fuchsia-400 hover:to-pink-400 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Carregando...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="text-2xl">▶</span>
+                        Tocar Agora
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Controles de Reprodução */}
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    <button
+                      onClick={pauseAudio}
+                      disabled={!guildId}
+                      className="flex flex-col items-center gap-1 py-3 rounded-xl bg-white/5 hover:bg-yellow-500/20 border border-white/5 hover:border-yellow-500/30 transition-all group disabled:opacity-30"
+                    >
+                      <span className="text-2xl group-hover:scale-110 transition-transform">⏸</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-yellow-400">Pausar</span>
+                    </button>
+                    <button
+                      onClick={resumeAudio}
+                      disabled={!guildId}
+                      className="flex flex-col items-center gap-1 py-3 rounded-xl bg-white/5 hover:bg-green-500/20 border border-white/5 hover:border-green-500/30 transition-all group disabled:opacity-30"
+                    >
+                      <span className="text-2xl group-hover:scale-110 transition-transform">▶</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-green-400">Retomar</span>
+                    </button>
+                    <button
+                      onClick={stopAudio}
+                      disabled={!guildId}
+                      className="flex flex-col items-center gap-1 py-3 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/5 hover:border-red-500/30 transition-all group disabled:opacity-30"
+                    >
+                      <span className="text-2xl group-hover:scale-110 transition-transform">⏹</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-red-400">Parar</span>
+                    </button>
+                  </div>
+
+                  {/* Controle de Volume */}
+                  <div className="mt-4 p-3 rounded-xl bg-black/20 border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
                       <input
                         type="range"
                         min="0"
@@ -493,103 +536,69 @@ export default function Home() {
                         step="0.05"
                         value={volume}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVolume(parseFloat(e.target.value))}
-                        className="w-full accent-discord-blurple bg-discord-darker cursor-pointer"
+                        className="flex-1 h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
+                        style={{
+                          background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%, rgba(255,255,255,0.1) 100%)`
+                        }}
                       />
-                      <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-bold">
-                        <span>MUDO</span>
-                        <span>{Math.round(volume * 100)}%</span>
-                      </div>
+                      <span className="text-sm font-bold text-purple-400 min-w-[40px] text-right">
+                        {Math.round(volume * 100)}%
+                      </span>
                     </div>
+                  </div>
 
+                  <p className="text-[10px] text-center text-gray-500 mt-3 font-medium">
+                    Suporta links do YouTube e arquivos MP3/WAV diretos.<br />
+                    <span className="text-purple-400/60">Em breve: Spotify e MyInstants</span>
+                  </p>
+                </div>
+
+                {/* ⚙️ CONFIGURAÇÕES - Colapsável */}
+                <details className="group">
+                  <summary className="flex items-center justify-between p-4 rounded-2xl bg-discord-dark border border-white/5 cursor-pointer hover:bg-discord-grayDark transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">⚙️</span>
+                      <span className="font-bold text-sm text-gray-400">Configurações do Servidor</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-gray-600'}`} />
+                      <span className="text-xl text-gray-500 group-open:rotate-180 transition-transform">▼</span>
+                    </div>
+                  </summary>
+
+                  <div className="mt-2 p-4 rounded-2xl bg-discord-darker border border-white/5 space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Server ID</label>
+                      <input
+                        type="text"
+                        value={guildId}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGuildId(e.target.value)}
+                        className="input-field w-full text-sm !py-2"
+                        placeholder="ID do servidor Discord"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Channel ID</label>
+                      <input
+                        type="text"
+                        value={voiceChannelId}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVoiceChannelId(e.target.value)}
+                        className="input-field w-full text-sm !py-2"
+                        placeholder="ID do canal de voz"
+                      />
+                    </div>
                     <button
                       onClick={testConnection}
                       disabled={!guildId || !voiceChannelId || connectionStatus === 'testing'}
-                      className="btn-primary w-full mt-2"
+                      className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium transition-colors disabled:opacity-50"
                     >
-                      {connectionStatus === 'testing' ? 'Testando...' : '🔗 Testar Conexão'}
+                      {connectionStatus === 'testing' ? '🔄 Testando...' : '🔗 Testar Conexão'}
                     </button>
-
-                    <div className="flex items-center justify-center gap-2 py-1">
-                      <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-discord-green shadow-[0_0_8px_#23A559]' :
-                        connectionStatus === 'error' ? 'bg-discord-red shadow-[0_0_8px_#ED4245]' :
-                          connectionStatus === 'testing' ? 'bg-discord-yellow animate-pulse' :
-                            'bg-gray-600'
-                        }`} />
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                        {connectionStatus === 'connected' ? 'Servidor Pronto' :
-                          connectionStatus === 'error' ? 'Erro de Conexão' :
-                            connectionStatus === 'testing' ? 'Verificando...' :
-                              'Status: Offline'}
-                      </span>
-                    </div>
-
-                    <div className="pt-2 border-t border-white/5">
-                      <p className="text-[9px] text-discord-grayLighter uppercase font-bold mb-1 opacity-50">Bot Endpoint (Vercel):</p>
-                      <code className="text-[10px] text-discord-blurple block truncate bg-black/20 p-1.5 rounded-lg border border-discord-blurple/20">
-                        {process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
-                      </code>
+                    <div className="text-center text-[10px] text-gray-500">
+                      {connectionStatus === 'connected' ? '✅ Conectado' : connectionStatus === 'error' ? '❌ Erro' : '⏳ Não testado'}
                     </div>
                   </div>
-                </div>
-
-                {/* Link Rápido */}
-                <div className="card !bg-gradient-to-br from-discord-dark to-[#232428]">
-                  <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-discord-green">
-                    <span className="opacity-70">🚀</span> Link Rápido
-                  </h2>
-
-                  <div className="space-y-4">
-                    <input
-                      type="url"
-                      value={quickLink}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
-                      placeholder="https://www.myinstants.com/pt/instant/..."
-                      className="input-field w-full text-sm !border-discord-green/30 focus:!border-discord-green"
-                    />
-                    <button
-                      onClick={playQuickLink}
-                      disabled={!quickLink || isLoading}
-                      className="btn-primary w-full !bg-discord-green hover:!bg-opacity-90 !text-white !py-3 !text-sm !font-bold"
-                    >
-                      {isLoading ? 'Carregando...' : '▶ Tocar Agora'}
-                    </button>
-
-                    {/* Controles de reprodução */}
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={pauseAudio}
-                        disabled={!guildId}
-                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-yellow/20 hover:!text-discord-yellow hover:!border-discord-yellow/30"
-                      >
-                        ⏸️ Pausar
-                      </button>
-                      <button
-                        onClick={resumeAudio}
-                        disabled={!guildId}
-                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-green/20 hover:!text-discord-green hover:!border-discord-green/30"
-                      >
-                        ▶️ Retomar
-                      </button>
-                      <button
-                        onClick={stopAudio}
-                        disabled={!guildId}
-                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-red/20 hover:!text-discord-red hover:!border-discord-red/30"
-                      >
-                        ⏹️ Parar
-                      </button>
-                    </div>
-
-                    <p className="text-[10px] text-center text-gray-500 mt-2 font-medium">
-                      Suporta links do YouTube, Spotify, MyInstants e arquivos MP3/WAV diretos.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Player Visual */}
-                <AudioVisualizer
-                  guildId={guildId}
-                  botEndpoint={process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
-                />
+                </details>
               </div>
 
               {/* Coluna Direita: Biblioteca */}
