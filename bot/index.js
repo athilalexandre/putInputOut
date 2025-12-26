@@ -288,6 +288,48 @@ app.post('/api/sounds/upload', upload.single('audio'), (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Endpoint para pausar o áudio
+app.post('/pause', (req, res) => {
+  const { guildId } = req.body;
+  console.log(`⏸️ Pause: ${guildId}`);
+
+  const player = audioPlayers.get(guildId);
+  if (!player) {
+    return res.status(404).json({ error: 'Nenhum player ativo' });
+  }
+
+  player.pause();
+  res.json({ success: true, status: 'paused' });
+});
+
+// Endpoint para retomar o áudio
+app.post('/resume', (req, res) => {
+  const { guildId } = req.body;
+  console.log(`▶️ Resume: ${guildId}`);
+
+  const player = audioPlayers.get(guildId);
+  if (!player) {
+    return res.status(404).json({ error: 'Nenhum player ativo' });
+  }
+
+  player.unpause();
+  res.json({ success: true, status: 'playing' });
+});
+
+// Endpoint para parar o áudio
+app.post('/stop', (req, res) => {
+  const { guildId } = req.body;
+  console.log(`⏹️ Stop: ${guildId}`);
+
+  const player = audioPlayers.get(guildId);
+  if (!player) {
+    return res.status(404).json({ error: 'Nenhum player ativo' });
+  }
+
+  player.stop();
+  res.json({ success: true, status: 'stopped' });
+});
+
 // Endpoint para atualizar nome de um som
 app.post('/api/sounds/update', (req, res) => {
   const { url, newName } = req.body;

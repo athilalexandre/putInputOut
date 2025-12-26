@@ -253,6 +253,55 @@ export default function Home() {
     }
   }
 
+  // Funções de controle de reprodução
+  const pauseAudio = async () => {
+    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+    try {
+      const response = await fetch(`${botEndpoint}/pause`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ guildId })
+      })
+      if (response.ok) {
+        setStatus({ type: 'info', message: '⏸️ Áudio pausado' })
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: '❌ Erro ao pausar' })
+    }
+  }
+
+  const resumeAudio = async () => {
+    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+    try {
+      const response = await fetch(`${botEndpoint}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ guildId })
+      })
+      if (response.ok) {
+        setStatus({ type: 'success', message: '▶️ Reprodução retomada' })
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: '❌ Erro ao retomar' })
+    }
+  }
+
+  const stopAudio = async () => {
+    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+    try {
+      const response = await fetch(`${botEndpoint}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ guildId })
+      })
+      if (response.ok) {
+        setStatus({ type: 'info', message: '⏹️ Reprodução parada' })
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: '❌ Erro ao parar' })
+    }
+  }
+
   const handleUpload = async () => {
     if (!uploadFile) {
       setStatus({ type: 'error', message: 'Selecione um arquivo primeiro' })
@@ -503,8 +552,34 @@ export default function Home() {
                     >
                       {isLoading ? 'Carregando...' : '▶ Tocar Agora'}
                     </button>
+
+                    {/* Controles de reprodução */}
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={pauseAudio}
+                        disabled={!guildId}
+                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-yellow/20 hover:!text-discord-yellow hover:!border-discord-yellow/30"
+                      >
+                        ⏸️ Pausar
+                      </button>
+                      <button
+                        onClick={resumeAudio}
+                        disabled={!guildId}
+                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-green/20 hover:!text-discord-green hover:!border-discord-green/30"
+                      >
+                        ▶️ Retomar
+                      </button>
+                      <button
+                        onClick={stopAudio}
+                        disabled={!guildId}
+                        className="flex-1 btn-secondary !py-2 !text-xs hover:!bg-discord-red/20 hover:!text-discord-red hover:!border-discord-red/30"
+                      >
+                        ⏹️ Parar
+                      </button>
+                    </div>
+
                     <p className="text-[10px] text-center text-gray-500 mt-2 font-medium">
-                      Suporta links do MyInstants e arquivos MP3/WAV diretos.
+                      Suporta links do YouTube, Spotify, MyInstants e arquivos MP3/WAV diretos.
                     </p>
                   </div>
                 </div>
