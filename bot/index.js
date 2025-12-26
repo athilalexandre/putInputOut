@@ -1,27 +1,24 @@
 import { Client, GatewayIntentBits } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, getVoiceConnection, StreamType } from '@discordjs/voice';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { spawn } from 'child_process';
-import { Readable } from 'stream';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import ffmpegPath from 'ffmpeg-static';
+import play from 'play-dl';
 
 // Carregar variáveis de ambiente
 dotenv.config();
 
 // Configurar FFmpeg
 if (ffmpegPath) {
-  console.log(`🎥 FFmpeg configurado: ${ffmpegPath}`);
   process.env.FFMPEG_PATH = ffmpegPath;
-} else {
-  console.error('⚠️ FFmpeg não encontrado! O bot não vai conseguir tocar nada.');
 }
 
-console.log('🚀 [BOT v7.0] SOUNDBOARD EDITION - MYINSTANTS & UPLOADS ONLY');
+console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL, YOUTUBE & SPOTIFY');
 
 // Configuração do bot Discord
 const client = new Client({
@@ -35,7 +32,6 @@ const client = new Client({
 
 client.once('ready', async () => {
   console.log(`✅ BOT ONLINE: ${client.user.tag}`);
-  console.log(`🔗 Link do Site: https://put-input-out.vercel.app/`);
 });
 
 // Configuração do Express
@@ -46,18 +42,14 @@ const PORT = process.env.PORT || 3001;
 app.use(express.json());
 app.use(cors({ origin: '*' }));
 
-// Estado global de conexões
+// Estado global
 const voiceConnections = new Map();
 const audioPlayers = new Map();
 
 // Configuração de Upload (Multer)
 const soundsUploadDir = path.join(process.cwd(), 'sounds');
 if (!fs.existsSync(soundsUploadDir)) {
-  try {
-    fs.mkdirSync(soundsUploadDir, { recursive: true });
-  } catch (e) {
-    console.error('Erro ao criar pasta de sons:', e);
-  }
+  fs.mkdirSync(soundsUploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
@@ -74,124 +66,120 @@ const upload = multer({
     const allowed = ['.mp3', '.wav', '.ogg', '.m4a'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Formato não suportado! Use MP3, WAV ou OGG.'));
+    else cb(new Error('Formato não suportado!'));
   },
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  limits: { fileSize: 15 * 1024 * 1024 } // 15MB
 });
 
-// --- FUNÇÕES AUXILIARES ---
+// --- FUNÇÕES DE ÁUDIO ---
 
-// 1. Tocar arquivo local via FFmpeg
-function ffmpegPcmFromPath(filePath) {
-  console.log(`Local File Stream: ${filePath}`);
-  const ffmpeg = spawn(ffmpegPath, [
-    '-i', filePath,
-    '-f', 's16le',
-    '-ar', '48000',
-    '-ac', '2',
-    '-loglevel', 'error',
-    'pipe:1'
-  ]);
-
-  ffmpeg.stderr.on('data', d => {
-    console.log(`ffmpeg local err: ${d}`);
-    fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), `FFMPEG STDERR: ${d}\n`);
+// 1. Tocar Arquivo Local (Convertendo para Ogg/Opus para máxima compatibilidade)
+function createLocalResource(filePath) {
+  return createAudioResource(filePath, {
+    inputType: StreamType.Arbitrary,
+    inlineVolume: true
   });
-
-  return createAudioResource(ffmpeg.stdout, { inlineVolume: true, inputType: 'raw' });
 }
 
-// 2. Tocar URL (MyInstants/Direct) via FFmpeg
-function ffmpegPcmFromReadable(readable) {
-  console.log(`Remote StreamPipe started...`);
+// 2. Tocar Stream (YouTube/Spotify via play-dl)
+async function createStreamResource(url) {
+  // Detector de tipo
+  const type = await play.validate(url);
+  let streamInfo;
+
+  if (type === 'yt_video') {
+    streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+  } else if (type === 'sp_track') {
+    if (play.is_expired()) await play.refreshToken();
+    streamInfo = await play.stream(url, { discordPlayerCompatibility: true });
+  } else if (type === 'sp_playlist') {
+    // Para playlist, pegamos a primeira musica (ou lógica futura de fila)
+    // Por simplicidade neste endpoint stateless, tocamos a primeira info
+    // Nota: Suporte a playlist total requereria um sistema de Queue no bot.
+    // Vamos tratar como erro ou pegar o primeiro track.
+    const playlist = await play.spotify(url);
+    const firstTrack = playlist.fetched_tracks.get('1');
+    streamInfo = await play.stream(firstTrack.url, { discordPlayerCompatibility: true });
+  } else {
+    // Tentar direct stream ou falhar
+    streamInfo = await play.stream(url, { discordPlayerCompatibility: true }).catch(async () => {
+      // Fallback para MyInstants/Direct via FFmpeg se play-dl falhar
+      return null;
+    });
+  }
+
+  if (streamInfo) {
+    return createAudioResource(streamInfo.stream, {
+      inputType: streamInfo.type,
+      inlineVolume: true
+    });
+  }
+  return null;
+}
+
+// 3. Resolver MyInstants (Fallback manual)
+async function resolveAndCreateDirectResource(url) {
+  let targetUrl = url;
+
+  // Lógica MyInstants
+  if (url.includes('myinstants.com') && !url.endsWith('.mp3')) {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+      const match = html.match(/https?:\/\/www\.myinstants\.com\/media\/sounds\/[^"']+\.mp3/i) ||
+        html.match(/\/media\/sounds\/[^"']+\.mp3/i);
+      if (match) {
+        targetUrl = match[0].startsWith('/') ? 'https://www.myinstants.com' + match[0] : match[0];
+      }
+    } catch (e) { console.error('Erro MyInstants:', e); }
+  }
+
+  // Tocar direto via FFmpeg (Stream Arbitrary lida com remote? Nem sempre bem. Melhor baixar via stream)
+  // Mas createAudioResource suporta URL http direta se o ffmpeg estiver no path.
+  // Vamos forçar o uso do FFmpeg para garantir.
+
   const ffmpeg = spawn(ffmpegPath, [
-    '-i', 'pipe:0',
-    '-f', 's16le',
-    '-ar', '48000',
+    '-i', targetUrl,
+    '-f', 'opus', // Usar Opus container Ogg é o melhor para Discord
+    '-c:a', 'libopus',
     '-ac', '2',
-    '-loglevel', 'error',
-    'pipe:1'
+    '-ar', '48000',
+    'pipe:1' // Output para stdout
   ]);
 
-  readable.pipe(ffmpeg.stdin);
+  ffmpeg.stderr.on('data', () => { }); // Ignorar logs do ffmpeg para limpar console
 
-  ffmpeg.stderr.on('data', d => console.log(`ffmpeg err: ${d}`));
-
-  return createAudioResource(ffmpeg.stdout, { inlineVolume: true, inputType: 'raw' });
+  return createAudioResource(ffmpeg.stdout, {
+    inputType: StreamType.OggOpus,
+    inlineVolume: true
+  });
 }
 
-// 3. Resolver link MyInstants
-async function resolveMyInstantsUrl(url) {
-  if (!url.includes('myinstants.com')) return url;
-
-  console.log(`🔎 Analisando MyInstants: ${url}`);
-  try {
-    // User-Agent é importante pois alguns sites bloqueiam requests sem ele
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-    });
-    const html = await response.text();
-
-    // Procura o padrão comum de MP3 do MyInstants
-    const match = html.match(/https?:\/\/www\.myinstants\.com\/media\/sounds\/[^"']+\.mp3/i) ||
-      html.match(/\/media\/sounds\/[^"']+\.mp3/i);
-
-    if (match) {
-      let mp3 = match[0];
-      if (mp3.startsWith('/')) mp3 = 'https://www.myinstants.com' + mp3;
-      console.log(`✅ MP3 Extraído: ${mp3}`);
-      return mp3;
-    }
-    console.warn('⚠️ Não achei o .mp3 no código fonte da página.');
-    return url;
-  } catch (e) {
-    console.error('❌ Erro ao ler MyInstants:', e.message);
-    return url;
-  }
-}
-
-// 4. Conectar Voice
-async function connectToVoiceChannel(guildId, voiceChannelId) {
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) throw new Error('Servidor não encontrado');
-
-  const voiceChannel = guild.channels.cache.get(voiceChannelId);
-  if (!voiceChannel) throw new Error('Canal não encontrado');
-
+// 4. Gerenciador de Conexão
+async function getOrJoinConnection(guildId, channelId, adapterCreator) {
   let connection = getVoiceConnection(guildId);
 
   if (!connection) {
     connection = joinVoiceChannel({
-      channelId: voiceChannelId,
+      channelId: channelId,
       guildId: guildId,
-      adapterCreator: guild.voiceAdapterCreator,
-      selfDeaf: false,
+      adapterCreator: adapterCreator
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
+      try { connection.destroy(); } catch (e) { }
       voiceConnections.delete(guildId);
       audioPlayers.delete(guildId);
     });
-    voiceConnections.set(guildId, connection);
   }
 
-  let player = audioPlayers.get(guildId);
-  if (!player) {
-    player = createAudioPlayer();
-    player.on('error', e => console.error('Erro no Player:', e));
-    connection.subscribe(player);
-    audioPlayers.set(guildId, player);
-  }
-
-  return { connection, player };
+  return connection;
 }
 
+// --- ENDPOINTS EXPRESS ---
 
-// --- ENDPOINTS ---
+app.get('/health', (req, res) => res.json({ status: 'ok', v: '8.0' }));
 
-app.get('/health', (req, res) => res.json({ status: 'ok', v: '7.0-soundboard' }));
-
-// Listar sons
 app.get('/api/sounds', (req, res) => {
   try {
     const p = path.join(process.cwd(), '../web/sounds.json');
@@ -200,233 +188,103 @@ app.get('/api/sounds', (req, res) => {
   } catch (e) { res.status(500).json([]); }
 });
 
-// Update (Rename)
-app.post('/api/sounds/update', (req, res) => {
-  const { url, newName } = req.body;
-  const p = path.join(process.cwd(), '../web/sounds.json');
-  try {
-    const sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
-    const idx = sounds.findIndex(s => s.url === url);
-    if (idx !== -1) {
-      sounds[idx].name = newName;
-      fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
-      return res.json({ success: true });
-    }
-  } catch (e) { }
-  res.status(500).json({ error: 'Erro ao atualizar' });
-});
-
-// Delete
-app.post('/api/sounds/delete', (req, res) => {
-  const { url, password } = req.body;
-  if (password !== 'admindelete') return res.status(403).json({ error: 'Senha inválida' });
-
-  const p = path.join(process.cwd(), '../web/sounds.json');
-  try {
-    let sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
-    const initialLen = sounds.length;
-    sounds = sounds.filter(s => s.url !== url);
-
-    if (sounds.length !== initialLen) {
-      fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
-
-      // Deletar arquivo fisico se for local
-      if (url.includes(path.join('bot', 'sounds')) && fs.existsSync(url)) {
-        try { fs.unlinkSync(url); } catch (e) { console.error('Erro deletando arquivo:', e); }
-      }
-      return res.json({ success: true });
-    }
-    return res.status(404).json({ error: 'Som não encontrado' });
-  } catch (e) {
-    res.status(500).json({ error: 'Erro interno' });
-  }
-});
-
-// Upload
 app.post('/api/sounds/upload', upload.single('audio'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Sem arquivo' });
-
   const soundName = req.body.name || path.parse(req.file.originalname).name;
   const p = path.join(process.cwd(), '../web/sounds.json');
-
   try {
     let sounds = [];
     if (fs.existsSync(p)) sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
-
-    const newSound = { name: soundName, url: req.file.path };
-    sounds.push(newSound);
+    sounds.push({ name: soundName, url: req.file.path });
     fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
-
-    console.log(`📥 Upload: ${soundName}`);
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PLAY (O Principal)
 app.post('/play', async (req, res) => {
   const { guildId, voiceChannelId, soundUrl, volume } = req.body;
-  const logMsg = `[${new Date().toISOString()}] Play Request: ${soundUrl} (Local check...)\n`;
-  fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), logMsg);
-  console.log(`🎵 Play Request: ${soundUrl}`);
+  console.log(`🎵 Play: ${soundUrl}`);
 
   if (!guildId || !voiceChannelId || !soundUrl) return res.status(400).json({ error: 'Missing params' });
 
-  // DEV MODE bypass
-  if (process.env.DISCORD_TOKEN === 'seu_discord_bot_token_aqui') return res.json({ ok: true, dev: true });
-
   try {
-    const { player } = await connectToVoiceChannel(guildId, voiceChannelId);
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).json({ error: 'Bot não está no servidor' });
 
-    // 1. Resolver link (MyInstants -> MP3 URL)
-    const finalUrl = await resolveMyInstantsUrl(soundUrl);
+    const connection = await getOrJoinConnection(guildId, voiceChannelId, guild.voiceAdapterCreator);
+
+    let player = audioPlayers.get(guildId);
+    if (!player) {
+      player = createAudioPlayer();
+      connection.subscribe(player);
+      audioPlayers.set(guildId, player);
+
+      player.on('error', error => {
+        console.error('❌ Player Error:', error.message);
+      });
+    }
+
     let resource;
 
-    // 2. Criar Resource de Áudio
-    const isLocal = (finalUrl.includes(':\\') || finalUrl.startsWith('/')) && !finalUrl.startsWith('http');
-    fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), `FinalURL: ${finalUrl}, isLocal: ${isLocal}\n`);
-
-    if (isLocal) {
-      // Arquivo Local
-      let cleanPath = finalUrl.replace(/^"|"$/g, '');
-      if (!fs.existsSync(cleanPath)) {
-        // Tentar corrigir path relativo se necessário
-        cleanPath = path.resolve(cleanPath);
+    // Detectar Origem
+    if ((soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be') || soundUrl.includes('spotify.com'))) {
+      console.log('🔗 Detectado YouTube/Spotify');
+      try {
+        resource = await createStreamResource(soundUrl);
+      } catch (e) {
+        console.error('Erro play-dl:', e);
+        throw new Error('Falha ao processar link externo');
       }
-      fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), `CleanPath: ${cleanPath}, Exists: ${fs.existsSync(cleanPath)}\n`);
+    } else {
+      // Arquivo Local ou Link Direto
+      const isLocal = !soundUrl.startsWith('http');
 
-      if (fs.existsSync(cleanPath)) {
-        resource = ffmpegPcmFromPath(cleanPath);
+      if (isLocal) {
+        let cleanPath = soundUrl.replace(/^"/, '').replace(/"$/, ''); // Limpar aspas se houver
+        console.log(`📂 Arquivo local: ${cleanPath}`);
+        if (fs.existsSync(cleanPath)) {
+          // createAudioResource lida mt bem com arquivos locais se não especificarmos inputType errado
+          // Ele usa FFmpeg internamente se necessário
+          resource = createLocalResource(cleanPath);
+        } else {
+          throw new Error(`Arquivo não encontrado: ${cleanPath}`);
+        }
       } else {
-        throw new Error(`Arquivo local não existe: ${cleanPath}`);
+        console.log('🌐 Link Direto / MyInstants');
+        resource = await resolveAndCreateDirectResource(soundUrl);
       }
-    } else {
-      // HTTP URL (MP3 direto ou extraido)
-      const response = await fetch(finalUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
-      });
-      if (!response.ok) throw new Error(`Erro ao baixar áudio: ${response.statusText}`);
-      resource = ffmpegPcmFromReadable(Readable.fromWeb(response.body));
     }
 
-    if (resource) {
-      if (volume) resource.volume?.setVolume(volume);
-      player.play(resource);
-      console.log('▶️ Tocando...');
-      fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), `Player started playing.\n`);
-      res.json({ ok: true });
-    } else {
-      throw new Error('Falha ao criar resource de áudio');
-    }
+    if (!resource) throw new Error('Não foi possível gerar o áudio.');
+
+    if (volume) resource.volume?.setVolume(Number(volume));
+
+    player.stop(); // Parar atual antes de tocar novo
+    player.play(resource);
+
+    res.json({ success: true });
 
   } catch (error) {
-    console.error('❌ Erro no Play:', error.message);
-    fs.appendFileSync(path.join(process.cwd(), 'debug-output.txt'), `ERROR: ${error.message}\n`);
+    console.error('❌ Erro Fatal no Play:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Comandos do Discord
-client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content.startsWith('!')) return;
+// Comandos texto simples
+client.on('messageCreate', async (msg) => {
+  if (msg.author.bot || !msg.content.startsWith('!')) return;
+  const args = msg.content.slice(1).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-  const args = message.content.slice(1).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
-
-  if (command === 'help') {
-    if (args[0] === 'sons') {
-      try {
-        const soundsPath = path.join(process.cwd(), '../web/sounds.json');
-        if (fs.existsSync(soundsPath)) {
-          const soundsData = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
-          const soundNames = soundsData.map(s => `• ${s.name}`).join('\n');
-          const chunks = soundNames.match(/[\s\S]{1,1900}/g) || [];
-
-          await message.reply(`🎵 **Sons Disponíveis:**`);
-          for (const chunk of chunks) {
-            await message.channel.send(`\`\`\`\n${chunk}\n\`\`\``);
-          }
-        }
-      } catch (err) {
-        message.reply('❌ Erro ao listar sons.');
-      }
-      return;
-    }
-
-    if (args[0] === 'site') {
-      return message.reply({
-        embeds: [{
-          title: "🌐 Como usar o Soundboard Web",
-          description: "1. Entre em https://put-input-out.vercel.app/\n2. Cole as IDs do Servidor e Canal nos campos de configuração.\n3. Clique em **Testar Conexão**.\n4. Quando estiver verde, basta clicar nos botões dos sons!",
-          color: 0x5865F2,
-          fields: [
-            { name: "Como pegar as IDs?", value: "Ative o 'Modo Desenvolvedor' no Discord (Configs > Avançado) e clique com o botão direito no Servidor ou Canal para copiar a ID." }
-          ]
-        }]
-      });
-    }
-
-    message.reply({
-      content: `📌 **Central de Ajuda - PutIn PutOut:**\n\n▶️ \`!play <nome>\` - Toca um som da biblioteca\n⏹️ \`!stop\` - Para o áudio atual\n📚 \`!help sons\` - Lista de todos os áudios\n🌐 \`!help site\` - Como configurar pelo navegador\n\n✨ **Dica:** Você também pode fazer upload de sons novos direto pelo site!`
-    });
-  }
-
-  if (command === 'stop') {
-    const connection = getVoiceConnection(message.guildId);
-    if (connection) {
-      const player = audioPlayers.get(message.guildId);
-      if (player) player.stop();
-      message.reply('⏹️ Reprodução parada.');
-    }
-  }
-
-  if (command === 'play') {
-    const query = args.join(' ');
-    if (!query) return message.reply('❌ Diga o nome do som ou cole um link.');
-
-    message.reply(`🎵 Buscando som: **${query}**...`);
-
-    try {
-      const soundsPath = path.join(process.cwd(), '../web/sounds.json');
-      const soundsData = JSON.parse(fs.readFileSync(soundsPath, 'utf8'));
-      const foundSound = soundsData.find(s => s.name.toLowerCase().includes(query.toLowerCase()));
-      const soundUrl = foundSound ? foundSound.url : query;
-      const voiceChannelId = '1141073147840430160';
-
-      const response = await fetch(`http://localhost:${PORT}/play`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: process.env.SHARED_SECRET,
-          guildId: message.guildId,
-          voiceChannelId: voiceChannelId,
-          soundUrl: soundUrl,
-          volume: 1
-        })
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Erro no bot');
-
-      message.channel.send(`✅ Tocando: **${foundSound ? foundSound.name : query}**`);
-    } catch (err) {
-      message.channel.send(`❌ Erro ao tocar: ${err.message}`);
-    }
+  if (cmd === 'stop') {
+    const player = audioPlayers.get(msg.guildId);
+    if (player) player.stop();
+    msg.reply('🛑 Parado.');
   }
 });
 
-// Login do bot
-if (process.env.DISCORD_TOKEN) {
-  client.login(process.env.DISCORD_TOKEN);
-}
+if (process.env.DISCORD_TOKEN) client.login(process.env.DISCORD_TOKEN);
 
-// Iniciar servidor Express
 app.listen(PORT, () => {
-  console.log(`🚀 [BOT v5] Backend pronto na porta ${PORT}`);
-  console.log(`🌍 TESTE AGORA: https://saltily-unprovident-xavier.ngrok-free.dev/health`);
+  console.log(`🔊 SERVER AUDIO ONLINE NA PORTA ${PORT}`);
 });
-
-// Tratamento de erros
-process.on('unhandledRejection', (error) => console.error('Unhandled:', error));
-process.on('uncaughtException', (error) => console.error('Uncaught:', error));
