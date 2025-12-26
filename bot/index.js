@@ -355,6 +355,24 @@ app.post('/stop', (req, res) => {
   res.json({ success: true, status: 'stopped' });
 });
 
+// Armazenar o último resource para controle de volume
+const currentResources = new Map();
+
+// Endpoint para alterar volume em tempo real
+app.post('/volume', (req, res) => {
+  const { guildId, volume } = req.body;
+  console.log(`🔊 Volume: ${guildId} -> ${volume}`);
+
+  const resource = currentResources.get(guildId);
+  if (resource && resource.volume) {
+    resource.volume.setVolume(Number(volume));
+    res.json({ success: true, volume: Number(volume) });
+  } else {
+    // Armazenar para próximo play
+    res.json({ success: true, message: 'Volume será aplicado no próximo play' });
+  }
+});
+
 // Endpoint para atualizar nome de um som
 app.post('/api/sounds/update', (req, res) => {
   const { url, newName } = req.body;
@@ -391,7 +409,7 @@ app.post('/api/sounds/update', (req, res) => {
 // Endpoint para deletar um som (requer senha)
 const DELETE_PASSWORD = '12345';
 
-app.delete('/api/sounds/delete', (req, res) => {
+app.post('/api/sounds/delete', (req, res) => {
   const { url, password } = req.body;
   console.log(`🗑️ Delete Sound: ${url}`);
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface AudioVisualizerProps {
     guildId: string
@@ -22,6 +22,9 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
         source: 'unknown'
     })
     const [elapsed, setElapsed] = useState(0)
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const animationRef = useRef<number>(0)
+    const timeRef = useRef(0)
 
     // Polling para status do player
     useEffect(() => {
@@ -58,6 +61,185 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
         }
     }, [status.status, status.startedAt])
 
+    // Animação do Caleidoscópio
+    useEffect(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        const isPlaying = status.status === 'playing'
+        const isPaused = status.status === 'paused'
+
+        const animate = () => {
+            timeRef.current += isPlaying ? 0.02 : (isPaused ? 0.002 : 0.001)
+            const t = timeRef.current
+
+            const width = canvas.width
+            const height = canvas.height
+            const centerX = width / 2
+            const centerY = height / 2
+
+            // Limpar com fade
+            ctx.fillStyle = isPlaying ? 'rgba(10, 5, 20, 0.1)' : 'rgba(10, 10, 15, 0.15)'
+            ctx.fillRect(0, 0, width, height)
+
+            if (!isPlaying && !isPaused) {
+                // Estado idle - apenas um padrão sutil
+                ctx.save()
+                ctx.translate(centerX, centerY)
+
+                for (let i = 0; i < 6; i++) {
+                    ctx.rotate(Math.PI / 3)
+                    ctx.beginPath()
+                    ctx.moveTo(0, 0)
+                    const dist = 50 + Math.sin(t * 0.5) * 20
+                    ctx.lineTo(dist, dist * 0.5)
+                    ctx.strokeStyle = `hsla(${260 + i * 10}, 50%, 30%, 0.3)`
+                    ctx.lineWidth = 2
+                    ctx.stroke()
+                }
+                ctx.restore()
+
+                animationRef.current = requestAnimationFrame(animate)
+                return
+            }
+
+            // Caleidoscópio ativo
+            const segments = 8
+            const angleStep = (Math.PI * 2) / segments
+
+            ctx.save()
+            ctx.translate(centerX, centerY)
+
+            // Múltiplas camadas de formas
+            for (let layer = 0; layer < 3; layer++) {
+                const layerOffset = layer * 0.3
+
+                for (let i = 0; i < segments; i++) {
+                    ctx.save()
+                    ctx.rotate(i * angleStep + t * (0.5 + layer * 0.2))
+
+                    // Formas geométricas animadas
+                    const numShapes = isPlaying ? 5 : 2
+                    for (let j = 0; j < numShapes; j++) {
+                        const distance = 30 + j * 25 + Math.sin(t * 2 + j + layerOffset) * 15
+                        const size = 8 + Math.sin(t * 3 + j * 0.5) * 5
+                        const hue = (t * 50 + i * 45 + j * 30 + layer * 60) % 360
+                        const saturation = isPlaying ? 80 : 40
+                        const lightness = isPlaying ? 60 : 30
+                        const alpha = isPlaying ? 0.7 : 0.3
+
+                        ctx.beginPath()
+
+                        // Alternar entre diferentes formas
+                        const shapeType = (i + j + layer) % 4
+
+                        if (shapeType === 0) {
+                            // Círculo
+                            ctx.arc(distance, 0, size, 0, Math.PI * 2)
+                        } else if (shapeType === 1) {
+                            // Losango
+                            ctx.moveTo(distance, -size)
+                            ctx.lineTo(distance + size, 0)
+                            ctx.lineTo(distance, size)
+                            ctx.lineTo(distance - size, 0)
+                            ctx.closePath()
+                        } else if (shapeType === 2) {
+                            // Triângulo
+                            ctx.moveTo(distance, -size)
+                            ctx.lineTo(distance + size, size)
+                            ctx.lineTo(distance - size, size)
+                            ctx.closePath()
+                        } else {
+                            // Estrela pequena
+                            for (let k = 0; k < 5; k++) {
+                                const angle = (k * Math.PI * 2) / 5 - Math.PI / 2
+                                const r = k % 2 === 0 ? size : size * 0.5
+                                const x = distance + Math.cos(angle) * r
+                                const y = Math.sin(angle) * r
+                                if (k === 0) ctx.moveTo(x, y)
+                                else ctx.lineTo(x, y)
+                            }
+                            ctx.closePath()
+                        }
+
+                        ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`
+                        ctx.fill()
+
+                        // Brilho externo quando tocando
+                        if (isPlaying && j === 0) {
+                            ctx.shadowColor = `hsla(${hue}, 100%, 50%, 0.5)`
+                            ctx.shadowBlur = 15
+                        }
+                    }
+
+                    // Linhas conectoras
+                    if (isPlaying) {
+                        ctx.beginPath()
+                        ctx.moveTo(20, 0)
+                        const endDist = 80 + Math.sin(t * 2.5 + i) * 30
+                        ctx.lineTo(endDist, Math.sin(t + i) * 20)
+                        ctx.strokeStyle = `hsla(${(t * 30 + i * 45) % 360}, 70%, 50%, 0.4)`
+                        ctx.lineWidth = 1.5
+                        ctx.shadowBlur = 0
+                        ctx.stroke()
+                    }
+
+                    ctx.restore()
+                }
+            }
+
+            // Centro brilhante
+            const pulseSize = isPlaying ? 15 + Math.sin(t * 4) * 8 : 10
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, pulseSize * 2)
+            gradient.addColorStop(0, isPlaying ? 'rgba(255, 255, 255, 0.9)' : 'rgba(150, 100, 200, 0.5)')
+            gradient.addColorStop(0.5, isPlaying ? `hsla(${t * 60 % 360}, 80%, 60%, 0.6)` : 'rgba(100, 50, 150, 0.3)')
+            gradient.addColorStop(1, 'transparent')
+
+            ctx.beginPath()
+            ctx.arc(0, 0, pulseSize * 2, 0, Math.PI * 2)
+            ctx.fillStyle = gradient
+            ctx.fill()
+
+            ctx.restore()
+
+            // Anéis externos pulsantes quando tocando
+            if (isPlaying) {
+                for (let ring = 0; ring < 3; ring++) {
+                    const ringRadius = 70 + ring * 20 + Math.sin(t * 2 + ring) * 10
+                    const ringAlpha = 0.3 - ring * 0.08
+
+                    ctx.beginPath()
+                    ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2)
+                    ctx.strokeStyle = `hsla(${(t * 40 + ring * 40) % 360}, 70%, 50%, ${ringAlpha})`
+                    ctx.lineWidth = 2
+                    ctx.stroke()
+                }
+            }
+
+            animationRef.current = requestAnimationFrame(animate)
+        }
+
+        // Configurar canvas
+        const resize = () => {
+            const rect = canvas.getBoundingClientRect()
+            canvas.width = rect.width * window.devicePixelRatio
+            canvas.height = rect.height * window.devicePixelRatio
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+        }
+
+        resize()
+        window.addEventListener('resize', resize)
+        animate()
+
+        return () => {
+            window.removeEventListener('resize', resize)
+            cancelAnimationFrame(animationRef.current)
+        }
+    }, [status.status])
+
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60)
         const secs = seconds % 60
@@ -68,57 +250,26 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
     const isPaused = status.status === 'paused'
     const isActive = isPlaying || isPaused
 
-    // Gerar barras do visualizador
-    const bars = Array.from({ length: 32 }, (_, i) => i)
-
     return (
         <div className={`rounded-2xl overflow-hidden transition-all duration-500 ${isActive
-                ? 'bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23] border border-purple-500/30 shadow-lg shadow-purple-500/10'
-                : 'bg-discord-darker border border-white/5'
+                ? 'border border-purple-500/30 shadow-lg shadow-purple-500/20'
+                : 'border border-white/5'
             }`}>
-            {/* Visualizer Container */}
-            <div className="relative h-32 overflow-hidden">
-                {/* Background Glow */}
-                {isPlaying && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-purple-500/20 via-transparent to-transparent animate-pulse" />
-                )}
+            {/* Canvas do Caleidoscópio */}
+            <div className="relative h-44 bg-[#0a0510]">
+                <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0 w-full h-full"
+                    style={{ imageRendering: 'auto' }}
+                />
 
-                {/* Bars Visualizer - WMP Style */}
-                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-[2px] h-full px-4 pb-2">
-                    {bars.map((i) => {
-                        // Gerar altura aleatória animada quando tocando
-                        const baseHeight = isPlaying ? 15 + Math.random() * 70 : (isPaused ? 20 : 5)
-                        const delay = i * 0.02
+                {/* Overlay de gradiente */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
 
-                        return (
-                            <div
-                                key={i}
-                                className={`w-[3px] rounded-t-sm transition-all ${isPlaying
-                                        ? 'bg-gradient-to-t from-purple-500 via-fuchsia-400 to-cyan-400 animate-equalizer'
-                                        : isPaused
-                                            ? 'bg-gradient-to-t from-yellow-500/50 to-yellow-400/30'
-                                            : 'bg-white/10'
-                                    }`}
-                                style={{
-                                    height: `${baseHeight}%`,
-                                    animationDelay: `${delay}s`,
-                                    animationDuration: isPlaying ? `${0.3 + Math.random() * 0.3}s` : '0s'
-                                }}
-                            />
-                        )
-                    })}
-                </div>
-
-                {/* Reflection Effect */}
-                {isActive && (
-                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/50 to-transparent" />
-                )}
-
-                {/* Status Overlay quando idle */}
+                {/* Status overlay quando idle */}
                 {!isActive && (
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center">
-                            <div className="text-4xl mb-2 opacity-30">🎵</div>
                             <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">
                                 Aguardando reprodução
                             </p>
@@ -128,11 +279,11 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
             </div>
 
             {/* Track Info */}
-            <div className="p-4 bg-black/30">
+            <div className="p-4 bg-gradient-to-r from-[#1a0a25] to-[#0a0515]">
                 <div className="flex items-center gap-4">
                     {/* Album Art / Icon */}
                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all ${isPlaying
-                            ? 'bg-gradient-to-br from-purple-500 to-fuchsia-500 shadow-lg shadow-purple-500/30 animate-spin-slow'
+                            ? 'bg-gradient-to-br from-purple-500 to-fuchsia-500 shadow-lg shadow-purple-500/30 animate-pulse'
                             : isPaused
                                 ? 'bg-yellow-500/20'
                                 : 'bg-white/5'
@@ -162,7 +313,7 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
 
                             {/* Elapsed Time */}
                             {isActive && (
-                                <span className="text-xs text-gray-400 font-mono">
+                                <span className="text-xs text-purple-400 font-mono">
                                     {formatTime(elapsed)}
                                 </span>
                             )}
@@ -172,50 +323,13 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
                     {/* Playing Animation */}
                     {isPlaying && (
                         <div className="flex items-center gap-1">
-                            <div className="w-1 h-4 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                            <div className="w-1 h-6 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                            <div className="w-1 h-3 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                            <div className="w-1 h-4 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                            <div className="w-1 h-6 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                            <div className="w-1 h-3 bg-pink-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                         </div>
                     )}
                 </div>
-
-                {/* Progress Bar (visual only) */}
-                {isActive && (
-                    <div className="mt-3 h-1 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                            className={`h-full rounded-full transition-all ${isPlaying
-                                    ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500'
-                                    : 'bg-yellow-500/50'
-                                }`}
-                            style={{
-                                width: isPlaying ? '100%' : '50%',
-                                animation: isPlaying ? 'progress 30s linear infinite' : 'none'
-                            }}
-                        />
-                    </div>
-                )}
             </div>
-
-            {/* CSS Animations */}
-            <style jsx>{`
-        @keyframes equalizer {
-          0%, 100% { height: 15%; }
-          50% { height: 85%; }
-        }
-        
-        .animate-equalizer {
-          animation: equalizer 0.4s ease-in-out infinite;
-        }
-        
-        .animate-spin-slow {
-          animation: spin 3s linear infinite;
-        }
-        
-        @keyframes progress {
-          0% { width: 0%; }
-          100% { width: 100%; }
-        }
-      `}</style>
         </div>
     )
 }
