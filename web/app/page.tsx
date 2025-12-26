@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import sounds from '../sounds.json'
 import PermissionChecker from '../components/PermissionChecker'
+import AudioVisualizer from '../components/AudioVisualizer'
 
 interface Sound {
   name: string
@@ -583,6 +584,12 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
+
+                {/* Player Visual */}
+                <AudioVisualizer
+                  guildId={guildId}
+                  botEndpoint={process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
+                />
               </div>
 
               {/* Coluna Direita: Biblioteca */}

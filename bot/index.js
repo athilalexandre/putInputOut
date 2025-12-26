@@ -288,6 +288,31 @@ app.post('/api/sounds/upload', upload.single('audio'), (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Estado do player para cada guild
+const playerState = new Map();
+
+// Endpoint para obter status do player
+app.get('/status/:guildId', (req, res) => {
+  const { guildId } = req.params;
+  const player = audioPlayers.get(guildId);
+  const state = playerState.get(guildId) || {};
+
+  if (!player) {
+    return res.json({
+      status: 'idle',
+      trackName: null,
+      startedAt: null
+    });
+  }
+
+  res.json({
+    status: player.state.status,
+    trackName: state.trackName || 'Áudio desconhecido',
+    startedAt: state.startedAt || null,
+    source: state.source || 'unknown'
+  });
+});
+
 // Endpoint para pausar o áudio
 app.post('/pause', (req, res) => {
   const { guildId } = req.body;
@@ -469,10 +494,38 @@ app.post('/play', async (req, res) => {
 
     if (volume) resource.volume?.setVolume(Number(volume));
 
+    // Armazenar informações da faixa
+    let trackName = 'Áudio';
+    let source = 'unknown';
+
+    if (soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be')) {
+      trackName = 'YouTube';
+      source = 'youtube';
+    } else if (soundUrl.includes('spotify.com')) {
+      trackName = 'Spotify';
+      source = 'spotify';
+    } else if (soundUrl.includes('myinstants.com')) {
+      trackName = 'MyInstants';
+      source = 'myinstants';
+    } else if (!soundUrl.startsWith('http')) {
+      // Arquivo local - extrair nome do arquivo
+      trackName = path.basename(soundUrl).replace(/\.[^/.]+$/, '');
+      source = 'local';
+    } else {
+      trackName = 'Stream Direto';
+      source = 'direct';
+    }
+
+    playerState.set(guildId, {
+      trackName,
+      source,
+      startedAt: Date.now()
+    });
+
     player.stop(); // Parar atual antes de tocar novo
     player.play(resource);
 
-    res.json({ success: true });
+    res.json({ success: true, trackName });
 
   } catch (error) {
     console.error('❌ Erro Fatal no Play:', error);
