@@ -108,6 +108,7 @@ function createLocalResource(filePath) {
 // 2. Tocar Stream (YouTube/Spotify via yt-dlp local)
 // yt-dlp.exe está na pasta do bot
 const ytdlpPath = path.join(process.cwd(), 'yt-dlp.exe');
+const cookiesPath = path.join(process.cwd(), '..', 'www.youtube.com_cookies.txt');
 
 async function createStreamResource(url) {
   // Verificar se é YouTube ou Spotify
@@ -128,14 +129,32 @@ async function createStreamResource(url) {
     return null;
   }
 
+  // Verificar se cookies existem
+  const hasCookies = fs.existsSync(cookiesPath);
+  if (hasCookies) {
+    console.log('🍪 Usando cookies do YouTube para autenticação');
+  } else {
+    console.log('⚠️ Cookies não encontrados - stream pode ser limitado');
+  }
+
   try {
-    // Argumentos do yt-dlp
+    // Argumentos do yt-dlp com flags robustas para evitar corte de stream
     const args = [
-      '-f', 'bestaudio/best',
+      '-f', 'bestaudio[ext=webm]/bestaudio/best', // Preferir webm para melhor streaming
       '-o', '-',  // Output para stdout
       '--no-playlist',
       '--no-warnings',
+      '--no-check-certificates',
+      '--retries', '10',           // Tentar novamente em caso de erro
+      '--fragment-retries', '10',  // Retry em fragmentos
+      '--buffer-size', '16K',      // Buffer maior para estabilidade
+      '--http-chunk-size', '10M',  // Chunks maiores
     ];
+
+    // Adicionar cookies se disponíveis (evita throttling/corte)
+    if (hasCookies) {
+      args.push('--cookies', cookiesPath);
+    }
 
     // Para Spotify, yt-dlp pode buscar no YouTube automaticamente
     if (isSpotify) {
@@ -145,7 +164,7 @@ async function createStreamResource(url) {
 
     args.push(url);
 
-    console.log(`▶️ Executando: ${ytdlpPath} ${args.join(' ')}`);
+    console.log(`▶️ Executando: ${ytdlpPath} ${args.slice(0, 5).join(' ')} ... ${url}`);
 
     const ytdlp = spawn(ytdlpPath, args);
 
@@ -155,17 +174,22 @@ async function createStreamResource(url) {
       '-f', 's16le',
       '-ac', '2',
       '-ar', '48000',
-      '-loglevel', 'error',
+      '-loglevel', 'warning',  // Mostrar warnings para debug
       'pipe:1'
     ]);
 
     // Pipe yt-dlp -> FFmpeg
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
-    // Logging
+    // Logging detalhado
     ytdlp.stderr.on('data', d => {
       const msg = d.toString().trim();
-      if (msg) console.log(`yt-dlp: ${msg}`);
+      if (msg) {
+        // Filtrar mensagens de progresso para não poluir o console
+        if (!msg.includes('[download]') || msg.includes('100%')) {
+          console.log(`yt-dlp: ${msg}`);
+        }
+      }
     });
 
     ytdlp.on('error', (err) => {
@@ -175,12 +199,20 @@ async function createStreamResource(url) {
     ytdlp.on('close', (code) => {
       if (code !== 0 && code !== null) {
         console.log(`⚠️ yt-dlp encerrou com código: ${code}`);
+      } else {
+        console.log('✅ yt-dlp finalizou stream com sucesso');
       }
     });
 
     ffmpeg.stderr.on('data', d => {
       const msg = d.toString().trim();
       if (msg && !msg.includes('time=')) console.log(`FFmpeg: ${msg}`);
+    });
+
+    ffmpeg.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        console.log(`⚠️ FFmpeg encerrou com código: ${code}`);
+      }
     });
 
     // Retornar o resource do FFmpeg
