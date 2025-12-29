@@ -1,7 +1,7 @@
 {
   "name": "discord-soundboard-bot",
   "version": "1.0.0",
-  "description": "Bot Discord para soundboard com suporte a YouTube e Spotify",
+  "description": "Bot Discord para soundboard com suporte a YouTube e MyInstants",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "bot",
     "soundboard",
     "youtube",
-    "spotify",
+    "myinstants",
     "voice"
   ],
   "author": "",

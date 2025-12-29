@@ -27,7 +27,6 @@ export default function Home() {
   // Estados para configuração do Discord
   const [guildId, setGuildId] = useState('')
   const [voiceChannelId, setVoiceChannelId] = useState('')
-  const [volume, setVolume] = useState(1)
 
   // Estados para link rápido
   const [quickLink, setQuickLink] = useState('')
@@ -63,20 +62,17 @@ export default function Home() {
   useEffect(() => {
     if (guildId) localStorage.setItem('guildId', guildId)
     if (voiceChannelId) localStorage.setItem('voiceChannelId', voiceChannelId)
-    localStorage.setItem('volume', volume.toString())
     if (quickLink) localStorage.setItem('quickLink', quickLink)
-  }, [guildId, voiceChannelId, volume, quickLink])
+  }, [guildId, voiceChannelId, quickLink])
 
   // Carregar configurações do localStorage (apenas no mount)
   useEffect(() => {
     const savedGuildId = localStorage.getItem('guildId')
     const savedVoiceChannelId = localStorage.getItem('voiceChannelId')
-    const savedVolume = localStorage.getItem('volume')
     const savedQuickLink = localStorage.getItem('quickLink')
 
     if (savedGuildId) setGuildId(savedGuildId)
     if (savedVoiceChannelId) setVoiceChannelId(savedVoiceChannelId)
-    if (savedVolume) setVolume(parseFloat(savedVolume))
     if (savedQuickLink) setQuickLink(savedQuickLink)
 
     fetchSounds()
@@ -135,25 +131,19 @@ export default function Home() {
     }
 
     setConnectionStatus('testing')
-    setStatus({ type: 'info', message: '🎵 Testando conexão e tocando música de boas-vindas...' })
+    setStatus({ type: 'info', message: '🔄 Testando conexão com o bot...' })
 
     try {
-      const response = await fetch('/api/play', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          soundUrl: soundList[0]?.url || 'https://www.soundjay.com/buttons/beep-01a.mp3',
-          guildId,
-          voiceChannelId,
-          volume: 0.5
-        })
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/health`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
       })
 
       const result = await response.json()
 
-      if (response.ok && result.ok) {
+      if (response.ok && result.status === 'ok') {
         setConnectionStatus('connected')
-        setStatus({ type: 'success', message: '✅ Conexão testada com sucesso! Tocando música de teste...' })
+        setStatus({ type: 'success', message: '✅ Bot online e pronto! Agora você pode tocar sons.' })
       } else {
         setConnectionStatus('error')
         setStatus({ type: 'error', message: `❌ Erro na conexão: ${result.error || 'O bot não respondeu corretamente'}` })
@@ -181,8 +171,7 @@ export default function Home() {
         body: JSON.stringify({
           soundUrl,
           guildId,
-          voiceChannelId,
-          volume
+          voiceChannelId
         })
       })
 
@@ -224,23 +213,14 @@ export default function Home() {
         body: JSON.stringify({
           soundUrl: quickLink.trim(),
           guildId,
-          voiceChannelId,
-          volume
+          voiceChannelId
         })
       })
 
       const result: PlayResponse = await response.json()
 
       if (response.ok && result.ok) {
-        let message = '✅ Link iniciado com sucesso!'
-
-        if (result.source === 'SPOTIFY_PREVIEW') {
-          message += ' (Spotify Preview)'
-        } else if (result.source === 'DIRECT') {
-          message += ' (Áudio direto)'
-        }
-
-        setStatus({ type: 'success', message })
+        setStatus({ type: 'success', message: '✅ Link iniciado com sucesso!' })
       } else {
         setStatus({
           type: 'error',
@@ -472,7 +452,7 @@ export default function Home() {
                       type="url"
                       value={quickLink}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuickLink(e.target.value)}
-                      placeholder="Cole um link do YouTube, Spotify, MyInstants..."
+                      placeholder="Cole um link do YouTube ou MyInstants..."
                       className="input-field w-full text-sm !bg-black/30 !border-purple-500/20 focus:!border-purple-500 pr-12"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 text-lg">🔗</span>
@@ -525,31 +505,8 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {/* Controle de Volume */}
-                  <div className="mt-4 p-3 rounded-xl bg-black/20 border border-white/5">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={volume}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVolume(parseFloat(e.target.value))}
-                        className="flex-1 h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
-                        style={{
-                          background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%, rgba(255,255,255,0.1) 100%)`
-                        }}
-                      />
-                      <span className="text-sm font-bold text-purple-400 min-w-[40px] text-right">
-                        {Math.round(volume * 100)}%
-                      </span>
-                    </div>
-                  </div>
-
                   <p className="text-[10px] text-center text-gray-500 mt-3 font-medium">
-                    Suporta links do YouTube e arquivos MP3/WAV diretos.<br />
-                    <span className="text-purple-400/60">Em breve: Spotify e MyInstants</span>
+                    Suporta links do YouTube, MyInstants e arquivos MP3/WAV diretos.
                   </p>
                 </div>
 
@@ -664,12 +621,12 @@ export default function Home() {
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-lg group-hover:bg-discord-blurple/20 group-hover:text-discord-blurple transition-colors">
-                                  {sound.url.includes('spotify') ? '🎧' : '🔊'}
+                                  {sound.url.includes('youtube') ? '📺' : '🔊'}
                                 </div>
                                 <div className="flex-1 overflow-hidden">
                                   <div className="font-bold text-sm truncate opacity-90 group-hover:opacity-100">{sound.name}</div>
                                   <div className="text-[10px] font-bold text-discord-grayLighter uppercase tracking-wider mt-0.5">
-                                    {sound.url.includes('spotify') ? 'Spotify' :
+                                    {sound.url.includes('youtube') ? 'YouTube' :
                                       sound.url.includes('\\') || sound.url.includes('/') ? 'Arquivo Local' : 'Áudio Direto'}
                                   </div>
                                 </div>
@@ -794,8 +751,7 @@ export default function Home() {
                   <h4 className="text-discord-green font-bold uppercase text-xs tracking-widest mb-3">2. Como tocar os áudios?</h4>
                   <div className="bg-white/5 p-4 rounded-2xl space-y-3 text-sm text-discord-grayLighter">
                     <p>• <strong>Biblioteca:</strong> Basta clicar no card de qualquer som na lista.</p>
-                    <p>• <strong>Link Rápido:</strong> Cole uma URL do YouTube, Spotify ou link direto (MP3/WAV) e clique em <strong>Tocar Agora</strong>.</p>
-                    <p>• <strong>Spotify:</strong> Agora suportamos faixas completas, álbuns e playlists!</p>
+                    <p>• <strong>Link Rápido:</strong> Cole uma URL do YouTube, MyInstants ou link direto (MP3/WAV) e clique em <strong>Tocar Agora</strong>.</p>
                   </div>
                 </section>
 

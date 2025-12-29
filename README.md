@@ -45,7 +45,7 @@
 |---------|-----------|
 | 🎛️ **Soundboard Visual Web** | Interface moderna e responsiva para controle total via browser |
 | 🔊 **Player de Áudio em Tempo Real** | Visualizador de áudio estilo kaleidoscópio com animações dinâmicas |
-| 🎵 **Multi-source Playback** | Suporte a YouTube, Spotify, MyInstants e arquivos locais |
+| 🎵 **Multi-source Playback** | Suporte a YouTube, MyInstants e arquivos locais |
 | 📤 **Upload de Sons** | Envie seus próprios arquivos MP3/WAV/OGG/M4A (até 15MB) |
 | ✏️ **Gerenciamento Completo** | Renomeie e delete sons diretamente pela interface |
 | 🔐 **Autenticação Discord** | Login seguro via OAuth2 com NextAuth.js |
@@ -57,7 +57,6 @@
 - ▶️ **Play/Resume** - Inicia ou retoma a reprodução
 - ⏸️ **Pause** - Pausa o áudio atual
 - ⏹️ **Stop** - Para completamente a reprodução
-- 🔊 **Volume** - Controle de 0% a 100% em tempo real
 - 🔗 **Quick Link** - Cole e toque qualquer URL instantaneamente
 
 ### 📊 Visualizador de Áudio
@@ -319,24 +318,7 @@ Content-Type: application/json
 { "success": true, "status": "stopped" }
 ```
 
----
 
-#### Alterar Volume
-```http
-POST /volume
-Content-Type: application/json
-```
-**Body:**
-```json
-{
-  "guildId": "123456789",
-  "volume": 0.5
-}
-```
-**Response:**
-```json
-{ "success": true, "volume": 0.5 }
-```
 
 ---
 
@@ -416,7 +398,6 @@ Content-Type: application/json
 |-------|--------|-----------|
 | 📂 **Arquivos Locais** | ✅ Full | MP3, WAV, OGG, M4A |
 | 🔴 **YouTube** | ✅ Full | Vídeos e Músicas via yt-dlp |
-| 🟢 **Spotify** | ✅ Full | Tracks via yt-dlp (busca no YouTube) |
 | 🟣 **MyInstants** | ✅ Full | Extração automática do MP3 |
 | 🌐 **Links Diretos** | ✅ Full | Qualquer URL de áudio válida |
 
@@ -425,7 +406,6 @@ Content-Type: application/json
 ```
 📂 Arquivo Local → FFmpeg → PCM s16le → Discord Voice
 🔴 YouTube → yt-dlp → FFmpeg → PCM s16le → Discord Voice
-🟢 Spotify → yt-dlp (search) → FFmpeg → PCM s16le → Discord Voice
 🟣 MyInstants → Scraper → Direct Stream → Discord Voice
 🌐 Direct URL → FFmpeg (interno) → Discord Voice
 ```

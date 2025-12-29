@@ -4,8 +4,8 @@ Este documento explica como iniciar todos os componentes do projeto e como usar 
 
 ## 📋 Resumo dos Terminais
 Você precisará de **3 terminais** abertos simultaneamente:
-1. Terminal do **Bot** (Porta 3000)
-2. Terminal da **Web** (Porta 3001)
+1. Terminal do **Bot** (Porta 3001)
+2. Terminal da **Web** (Porta 3000)
 3. Terminal do **Ngrok** (Tunelamento)
 
 ---
@@ -19,7 +19,7 @@ O bot controla a música e a conexão com o Discord.
 cd bot
 npm run dev
 ```
-✅ **Sucesso:** Você verá logs como `Bot online!` e `Servidor rodando na porta 3000`.
+✅ **Sucesso:** Você verá logs como `Bot ONLINE!` e `SERVER AUDIO ONLINE NA PORTA 3001`.
 
 ---
 
@@ -32,7 +32,7 @@ A interface web onde você clica nos botões.
 cd web
 npm run dev
 ```
-✅ **Sucesso:** O site estará acessível em `http://localhost:3001`.
+✅ **Sucesso:** O site estará acessível em `http://localhost:3000`.
 
 ---
 
@@ -51,9 +51,9 @@ ngrok http 3001
 4. Envie esse link para seu celular ou amigos.
 
 ### ⚠️ Atenção Importante sobre Conectividade
-Por padrão, o site (`localhost:3001`) tenta falar com o bot em `localhost:3000`. 
+Por padrão, o site (`localhost:3000`) tenta falar com o bot em `localhost:3001`. 
 - **No seu PC:** Funciona perfeito.
 - **No Celular (via Ngrok):** O site vai abrir, mas **os botões podem falhar** porque o celular não entende o que é "localhost".
 
 **Para funcionar 100% no celular (Avançado):**
-Você precisa expor o Bot também ou configurar o endereço de IP da sua rede local (ex: 192.168.x.x) nas configurações, mas o método acima já serve para iniciar o Ngrok como solicitado.
+Configure a variável `NEXT_PUBLIC_BOT_ENDPOINT` no arquivo `.env.local` da pasta web com a URL do Ngrok.

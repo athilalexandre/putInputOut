@@ -23,7 +23,7 @@ if (ffmpegPath) {
 // Nota: Cookies removidos pois createAgent não está disponível nesta versão
 // Se necessário no futuro, considerar usar yt-dlp como alternativa
 
-console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL, YOUTUBE & SPOTIFY');
+console.log('🚀 [BOT v8.0] ULTIMATE EDITION - LOCAL & YOUTUBE');
 console.log('--- VOICE DEPENDENCY REPORT ---');
 console.log(generateDependencyReport());
 console.log('-------------------------------');
@@ -111,16 +111,15 @@ const ytdlpPath = path.join(process.cwd(), 'yt-dlp.exe');
 const cookiesPath = path.join(process.cwd(), '..', 'www.youtube.com_cookies.txt');
 
 async function createStreamResource(url) {
-  // Verificar se é YouTube ou Spotify
+  // Verificar se é YouTube
   const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-  const isSpotify = url.includes('spotify.com');
 
-  if (!isYouTube && !isSpotify) {
-    console.log('⚠️ URL não é YouTube nem Spotify');
+  if (!isYouTube) {
+    console.log('⚠️ URL não é YouTube');
     return null;
   }
 
-  console.log(`🔗 ${isYouTube ? 'YouTube' : 'Spotify'} detectado`);
+  console.log('🔗 YouTube detectado');
 
   // Verificar se yt-dlp existe
   if (!fs.existsSync(ytdlpPath)) {
@@ -156,11 +155,7 @@ async function createStreamResource(url) {
       args.push('--cookies', cookiesPath);
     }
 
-    // Para Spotify, yt-dlp pode buscar no YouTube automaticamente
-    if (isSpotify) {
-      // yt-dlp suporta Spotify nativamente (busca no YouTube)
-      console.log('🎵 Buscando Spotify no YouTube via yt-dlp...');
-    }
+
 
     args.push(url);
 
@@ -512,8 +507,8 @@ app.post('/play', async (req, res) => {
     let resource;
 
     // Detectar Origem
-    if ((soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be') || soundUrl.includes('spotify.com'))) {
-      console.log('🔗 Detectado YouTube/Spotify');
+    if ((soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be'))) {
+      console.log('🔗 Detectado YouTube');
       try {
         resource = await createStreamResource(soundUrl);
       } catch (e) {
@@ -551,9 +546,6 @@ app.post('/play', async (req, res) => {
     if (soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be')) {
       trackName = 'YouTube';
       source = 'youtube';
-    } else if (soundUrl.includes('spotify.com')) {
-      trackName = 'Spotify';
-      source = 'spotify';
     } else if (soundUrl.includes('myinstants.com')) {
       trackName = 'MyInstants';
       source = 'myinstants';
