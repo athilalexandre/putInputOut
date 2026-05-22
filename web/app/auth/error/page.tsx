@@ -1,25 +1,27 @@
-'use client'
-
-import { Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-function AuthErrorContent() {
-  const searchParams = useSearchParams()
-  const error = searchParams.get('error')
+export const dynamic = 'force-dynamic'
 
-  const getErrorMessage = (error: string | null) => {
-    switch (error) {
-      case 'Configuration':
-        return 'Erro de configuração do servidor'
-      case 'AccessDenied':
-        return 'Acesso negado'
-      case 'Verification':
-        return 'Erro na verificação'
-      default:
-        return 'Erro desconhecido na autenticação'
-    }
+const getErrorMessage = (error: string | null) => {
+  switch (error) {
+    case 'Configuration':
+      return 'Erro de configuração do servidor'
+    case 'AccessDenied':
+      return 'Acesso negado'
+    case 'Verification':
+      return 'Erro na verificação'
+    default:
+      return 'Erro desconhecido na autenticação'
   }
+}
+
+interface PageProps {
+  searchParams: Promise<{ error?: string }> | { error?: string }
+}
+
+export default async function AuthError({ searchParams }: PageProps) {
+  const resolvedSearchParams = await searchParams
+  const error = resolvedSearchParams?.error || null
 
   return (
     <div className="min-h-screen bg-discord-darker flex items-center justify-center">
@@ -62,13 +64,5 @@ function AuthErrorContent() {
         </div>
       </div>
     </div>
-  )
-}
-
-export default function AuthError() {
-  return (
-    <Suspense fallback={null}>
-      <AuthErrorContent />
-    </Suspense>
   )
 }
