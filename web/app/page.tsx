@@ -57,12 +57,7 @@ export default function Home() {
 
   const fetchSounds = async () => {
     try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds`, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      })
+      const response = await fetch('/api/bot/api/sounds')
       if (response.ok) {
         const data = await response.json()
         setSoundList(data)
@@ -104,12 +99,10 @@ export default function Home() {
 
   const renameSound = async (url: string, newName: string) => {
     try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds/update`, {
+      const response = await fetch('/api/bot/api/sounds/update', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ url, newName })
       })
@@ -138,10 +131,7 @@ export default function Home() {
     setStatus({ type: 'info', message: '🔄 Testando conexão com o bot...' })
 
     try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/health`, {
-        headers: { 'ngrok-skip-browser-warning': 'true' }
-      })
+      const response = await fetch('/api/bot/health')
 
       const result = await response.json()
 
@@ -240,11 +230,10 @@ export default function Home() {
 
   // Funções de controle de reprodução
   const pauseAudio = async () => {
-    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
     try {
-      const response = await fetch(`${botEndpoint}/pause`, {
+      const response = await fetch('/api/bot/pause', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guildId })
       })
       if (response.ok) {
@@ -256,11 +245,10 @@ export default function Home() {
   }
 
   const resumeAudio = async () => {
-    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
     try {
-      const response = await fetch(`${botEndpoint}/resume`, {
+      const response = await fetch('/api/bot/resume', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guildId })
       })
       if (response.ok) {
@@ -272,11 +260,10 @@ export default function Home() {
   }
 
   const stopAudio = async () => {
-    const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
     try {
-      const response = await fetch(`${botEndpoint}/stop`, {
+      const response = await fetch('/api/bot/stop', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guildId })
       })
       if (response.ok) {
@@ -301,12 +288,8 @@ export default function Home() {
     formData.append('name', uploadName)
 
     try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds/upload`, {
+      const response = await fetch('/api/bot/api/sounds/upload', {
         method: 'POST',
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        },
         body: formData
       })
 
@@ -333,12 +316,10 @@ export default function Home() {
     if (!deletePassword) return;
 
     try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds/delete`, {
+      const response = await fetch('/api/bot/api/sounds/delete', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ url: deleteUrl, password: deletePassword })
       })
@@ -447,7 +428,7 @@ export default function Home() {
                 {/* 🎵 PLAYER VISUAL - DESTAQUE PRINCIPAL */}
                 <AudioVisualizer
                   guildId={guildId}
-                  botEndpoint={process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'}
+                  botEndpoint="/api/bot"
                 />
 
                 {/* 🎮 CONTROLES DO PLAYER */}

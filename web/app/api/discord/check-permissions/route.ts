@@ -40,6 +40,16 @@ interface PermissionOverwrite {
   deny: string
 }
 
+class DiscordApiError extends Error {
+  constructor(
+    public status: number,
+    public path: string,
+    details: string
+  ) {
+    super(`Discord API ${status} em ${path}: ${details}`)
+  }
+}
+
 function jsonResponse(hasPermission: boolean, message: string, user?: DiscordUser & { isAdmin: boolean }) {
   return NextResponse.json(
     {
@@ -69,7 +79,7 @@ async function discordFetch<T>(path: string, token: string, tokenType: 'Bearer' 
 
   if (!response.ok) {
     const details = await response.text().catch(() => '')
-    throw new Error(`Discord API ${response.status} em ${path}: ${details}`)
+    throw new DiscordApiError(response.status, path, details)
   }
 
   return response.json() as Promise<T>
@@ -149,7 +159,10 @@ export async function POST(request: NextRequest) {
       guild = await discordFetch<DiscordGuild>(`/guilds/${guildId}`, botToken, 'Bot')
     } catch (error) {
       console.error('Erro ao buscar servidor:', error)
-      return jsonResponse(false, 'Bot nao encontrado neste servidor ou token do bot invalido')
+      if (error instanceof DiscordApiError && error.status === 401) {
+        return jsonResponse(false, 'Token do bot invalido na Vercel. Atualize DISCORD_BOT_TOKEN com o token correto do bot.')
+      }
+      return jsonResponse(false, 'Bot nao encontrado neste servidor. Convide o bot para o servidor e confira se o Server ID esta correto.')
     }
 
     let channel: DiscordChannel
@@ -157,7 +170,7 @@ export async function POST(request: NextRequest) {
       channel = await discordFetch<DiscordChannel>(`/channels/${voiceChannelId}`, botToken, 'Bot')
     } catch (error) {
       console.error('Erro ao buscar canal:', error)
-      return jsonResponse(false, 'Canal nao encontrado ou inacessivel para o bot')
+      return jsonResponse(false, 'Canal nao encontrado ou inacessivel para o bot. Confira o Channel ID e as permissoes do bot.')
     }
 
     if (channel.guild_id && channel.guild_id !== guildId) {

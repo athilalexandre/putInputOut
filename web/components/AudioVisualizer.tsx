@@ -32,9 +32,7 @@ export default function AudioVisualizer({ guildId, botEndpoint }: AudioVisualize
 
         const fetchStatus = async () => {
             try {
-                const response = await fetch(`${botEndpoint}/status/${guildId}`, {
-                    headers: { 'ngrok-skip-browser-warning': 'true' }
-                })
+                const response = await fetch(`${botEndpoint}/status/${guildId}`)
                 if (response.ok) {
                     const data = await response.json()
                     setStatus(data)
