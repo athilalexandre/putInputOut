@@ -530,13 +530,26 @@ app.post('/play', async (req, res) => {
       if (isLocal) {
         let cleanPath = soundUrl.replace(/^"/, '').replace(/"$/, ''); // Limpar aspas se houver
         console.log(`📂 Arquivo local: ${cleanPath}`);
-        if (fs.existsSync(cleanPath)) {
-          // createAudioResource lida mt bem com arquivos locais se não especificarmos inputType errado
-          // Ele usa FFmpeg internamente se necessário
-          resource = createLocalResource(cleanPath);
-        } else {
-          throw new Error(`Arquivo não encontrado: ${cleanPath}`);
+        
+        let finalPath = cleanPath;
+        if (!fs.existsSync(finalPath)) {
+          const filename = path.basename(cleanPath);
+          const fallbackPath = path.join(process.cwd(), 'sounds', filename);
+          console.log(`🔍 Arquivo não encontrado no caminho original. Tentando fallback: ${fallbackPath}`);
+          if (fs.existsSync(fallbackPath)) {
+            finalPath = fallbackPath;
+          } else {
+            const webFallbackPath = path.join(process.cwd(), '../web/sounds', filename);
+            console.log(`🔍 Tentando segundo fallback: ${webFallbackPath}`);
+            if (fs.existsSync(webFallbackPath)) {
+              finalPath = webFallbackPath;
+            } else {
+              throw new Error(`Arquivo não encontrado: ${cleanPath}`);
+            }
+          }
         }
+        
+        resource = createLocalResource(finalPath);
       } else {
         console.log('🌐 Link Direto / MyInstants');
         resource = await resolveAndCreateDirectResource(soundUrl);
