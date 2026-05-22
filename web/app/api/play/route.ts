@@ -31,65 +31,71 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const botEndpoint = process.env.BOT_ENDPOINT || 'http://localhost:3001'
+    const rawEndpoints = process.env.BOT_ENDPOINT || 'http://localhost:3001'
+    const endpoints = rawEndpoints.split(',').map(u => u.trim().replace(/\/$/, ''))
     const secret = process.env.SHARED_SECRET || 'chave_secreta_123'
 
-    console.log(`🔗 Chamando bot em: ${botEndpoint}/play`)
+    let lastError: any = null
 
-    try {
-      const botResponse = await fetch(`${botEndpoint}/play`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
-        body: JSON.stringify({
-          soundUrl,
-          guildId,
-          voiceChannelId,
-          volume: volume || 1,
-          secret
-        }),
-        // Adicionar timeout para evitar que a Vercel mate a função antes da hora
-        signal: AbortSignal.timeout(8000)
-      })
+    for (const botEndpoint of endpoints) {
+      console.log(`🔗 [Play] Tentando bot em: ${botEndpoint}/play`)
 
-      const responseText = await botResponse.text()
-      console.log(`📥 Resposta bruta do bot (Status ${botResponse.status}):`, responseText)
-
-      let result
       try {
-        result = JSON.parse(responseText)
-      } catch (e) {
-        console.error('❌ Falha ao parsear JSON do bot:', responseText)
-        return NextResponse.json(
-          { error: `Resposta inválida do bot: ${responseText.substring(0, 100)}` },
-          { status: 502 }
-        )
+        const botResponse = await fetch(`${botEndpoint}/play`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+          body: JSON.stringify({
+            soundUrl,
+            guildId,
+            voiceChannelId,
+            volume: volume || 1,
+            secret
+          }),
+          // Timeout menor por tentativa para permitir fallback rápido dentro dos limites da Vercel
+          signal: AbortSignal.timeout(6000)
+        })
+
+        const responseText = await botResponse.text()
+        console.log(`📥 Resposta bruta do bot (${botEndpoint} Status ${botResponse.status}):`, responseText)
+
+        let result
+        try {
+          result = JSON.parse(responseText)
+        } catch (e) {
+          console.error(`❌ Falha ao parsear JSON do bot em ${botEndpoint}:`, responseText)
+          // Se a resposta for lixo, talvez o endpoint esteja quebrado, vamos tentar o próximo
+          continue
+        }
+
+        if (!botResponse.ok) {
+          console.error(`❌ Bot em ${botEndpoint} retornou erro:`, result)
+          return NextResponse.json(
+            { error: result.error || 'O bot não conseguiu processar o áudio' },
+            { status: botResponse.status }
+          )
+        }
+
+        console.log(`✅ Resposta do bot em ${botEndpoint} processada:`, result)
+
+        return NextResponse.json({
+          ok: true,
+          source: result.source,
+          message: result.message || 'Som enviado com sucesso'
+        })
+      } catch (fetchError: any) {
+        console.error(`❌ Erro de rede ao chamar o bot em ${botEndpoint}:`, fetchError.message)
+        lastError = fetchError
       }
-
-      if (!botResponse.ok) {
-        console.error('❌ Bot retornou erro:', result)
-        return NextResponse.json(
-          { error: result.error || 'O bot não conseguiu processar o áudio' },
-          { status: botResponse.status }
-        )
-      }
-
-      console.log('✅ Resposta do bot processada:', result)
-
-      return NextResponse.json({
-        ok: true,
-        source: result.source,
-        message: result.message || 'Som enviado com sucesso'
-      })
-    } catch (fetchError: any) {
-      console.error('❌ Erro de rede ao chamar o bot:', fetchError)
-      return NextResponse.json(
-        { error: `Falha na conexão com o bot: ${fetchError.message}` },
-        { status: 504 }
-      )
     }
+
+    // Se falhou em todos os endpoints
+    return NextResponse.json(
+      { error: `Falha na conexão com o bot: ${lastError?.message || 'Nenhum endpoint de bot respondeu'}` },
+      { status: 504 }
+    )
 
   } catch (error: any) {
     console.error('Erro crítico na API /play:', error)
