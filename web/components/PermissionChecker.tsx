@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
 
 interface PermissionCheckerProps {
   guildId: string
@@ -90,32 +90,74 @@ export default function PermissionChecker({ guildId, voiceChannelId, children }:
 
   if (!hasPermission) {
     return (
-      <div className="bg-discord-darker border border-discord-red rounded-lg p-6 text-center">
-        <div className="text-4xl mb-4">🚫</div>
-        <h3 className="text-xl font-semibold text-discord-red mb-2">
-          Acesso Negado
-        </h3>
-        <p className="text-gray-300 mb-4">
-          {error || 'Você não tem permissão para usar este canal de voz'}
-        </p>
+      <div className="max-w-2xl mx-auto my-12 animate-in fade-in zoom-in-95 duration-500">
+        <div className="bg-gradient-to-br from-[#1d1e2e] via-discord-dark to-[#161726] border border-discord-red/30 rounded-3xl p-8 text-center shadow-2xl shadow-red-500/5 backdrop-blur-md relative overflow-hidden">
+          {/* Soft background glows */}
+          <div className="absolute -top-24 -left-24 w-48 h-48 bg-discord-red/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-discord-blurple/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="bg-discord-dark p-4 rounded-lg border border-gray-600 text-left">
-          <h4 className="font-medium text-discord-yellow mb-2">
-            🔑 Permissões Necessárias:
-          </h4>
-          <ul className="text-sm text-gray-300 space-y-1">
-            <li>• Ser membro do servidor</li>
-            <li>• Ter permissão para ver o canal de voz</li>
-            <li>• Ter permissão para conectar ao canal (se não for admin)</li>
-          </ul>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-discord-red/10 text-discord-red border border-discord-red/20 mb-6 shadow-lg shadow-red-500/10">
+            <span className="text-3xl">🚫</span>
+          </div>
+
+          <h3 className="text-2xl font-bold text-discord-red mb-3">
+            Acesso Negado
+          </h3>
+          
+          <p className="text-discord-grayLighter mb-6 text-sm max-w-md mx-auto leading-relaxed">
+            {error || 'Não foi possível se comunicar com o bot neste servidor ou canal. Por favor, verifique as permissões listadas abaixo.'}
+          </p>
+
+          <div className="bg-black/30 p-6 rounded-2xl border border-white/5 text-left mb-8 max-w-lg mx-auto">
+            <h4 className="font-bold text-discord-yellow text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>🔑</span> Permissões Necessárias:
+            </h4>
+            <ul className="text-sm text-discord-grayLighter space-y-2">
+              <li className="flex items-start gap-2">
+                <span className="text-discord-red font-bold">✔</span>
+                <span>O bot precisa estar convidado para este servidor (Server ID).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-discord-red font-bold">✔</span>
+                <span>Você precisa ser membro ativo desse mesmo servidor.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-discord-red font-bold">✔</span>
+                <span>O bot e você devem ter permissão de visualização e conexão no canal de voz.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={checkPermissions}
+              className="w-full sm:w-auto bg-discord-blurple hover:bg-discord-blurple-dark text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 hover:-translate-y-0.5 active:scale-95 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 text-sm"
+            >
+              🔄 Verificar Novamente
+            </button>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem('guildId')
+                localStorage.removeItem('voiceChannelId')
+                window.location.reload()
+              }}
+              className="w-full sm:w-auto bg-white/5 hover:bg-white/10 text-discord-grayLighter hover:text-white font-bold py-3 px-6 rounded-xl border border-white/10 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm"
+            >
+              ⚙️ Mudar de Servidor
+            </button>
+
+            <button
+              onClick={() => {
+                localStorage.clear()
+                signOut({ callbackUrl: '/auth/signin' })
+              }}
+              className="w-full sm:w-auto bg-discord-red/10 hover:bg-discord-red text-discord-red hover:text-white font-bold py-3 px-6 rounded-xl border border-discord-red/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm"
+            >
+              🗑️ Resetar Tudo
+            </button>
+          </div>
         </div>
-
-        <button
-          onClick={checkPermissions}
-          className="mt-4 bg-discord-blurple hover:bg-discord-blurple-dark text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-        >
-          🔄 Verificar Novamente
-        </button>
       </div>
     )
   }
