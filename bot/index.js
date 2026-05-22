@@ -107,8 +107,9 @@ function createLocalResource(filePath) {
 }
 
 // 2. Tocar Stream (YouTube/Spotify via yt-dlp local)
-// yt-dlp.exe está na pasta do bot
-const ytdlpPath = path.join(process.cwd(), 'yt-dlp.exe');
+// yt-dlp.exe está na pasta do bot (para Windows)
+const isWindows = process.platform === 'win32';
+const ytdlpPath = isWindows ? path.join(process.cwd(), 'yt-dlp.exe') : 'yt-dlp';
 const cookiesPath = path.join(process.cwd(), '..', 'www.youtube.com_cookies.txt');
 
 async function createStreamResource(url) {
@@ -122,8 +123,8 @@ async function createStreamResource(url) {
 
   console.log('🔗 YouTube detectado');
 
-  // Verificar se yt-dlp existe
-  if (!fs.existsSync(ytdlpPath)) {
+  // Verificar se yt-dlp existe (apenas no Windows, no Linux ele é instalado globalmente)
+  if (isWindows && !fs.existsSync(ytdlpPath)) {
     console.error('❌ yt-dlp.exe não encontrado em:', ytdlpPath);
     console.error('Por favor, baixe de: https://github.com/yt-dlp/yt-dlp/releases');
     return null;

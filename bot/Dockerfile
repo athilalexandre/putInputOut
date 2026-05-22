@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Instalar ffmpeg
-RUN apk add --no-cache ffmpeg
+# Instalar ffmpeg e yt-dlp
+RUN apk add --no-cache ffmpeg yt-dlp
 
 # Criar diretório de trabalho
 WORKDIR /app
