@@ -8,12 +8,13 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import ffmpegPath from 'ffmpeg-static';
-import play from 'play-dl';
-import ytdl from '@distube/ytdl-core';
 import 'opusscript'; // Force OpusScript registration if native fail
 
 // Carregar variáveis de ambiente
 dotenv.config();
+if (!process.env.DISCORD_TOKEN && fs.existsSync(path.join(process.cwd(), 'env'))) {
+  dotenv.config({ path: path.join(process.cwd(), 'env') });
+}
 
 // Configurar FFmpeg (Importante para dependências internas)
 if (ffmpegPath) {
@@ -272,7 +273,11 @@ async function getOrJoinConnection(guildId, channelId, adapterCreator) {
 
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       console.log('❌ Conexão de voz: DISCONNECTED');
-      try { connection.destroy(); } catch (e) { }
+      try {
+        connection.destroy();
+      } catch (error) {
+        console.warn('Falha ao destruir conexao de voz ja desconectada:', error.message);
+      }
       voiceConnections.delete(guildId);
       audioPlayers.delete(guildId);
     });
@@ -474,10 +479,13 @@ app.post('/api/sounds/delete', (req, res) => {
 });
 
 app.post('/play', async (req, res) => {
-  const { guildId, voiceChannelId, soundUrl, volume } = req.body;
+  const { guildId, voiceChannelId, soundUrl, volume, secret } = req.body;
   console.log(`🎵 Play: ${soundUrl}`);
 
   if (!guildId || !voiceChannelId || !soundUrl) return res.status(400).json({ error: 'Missing params' });
+  if (process.env.SHARED_SECRET && secret !== process.env.SHARED_SECRET) {
+    return res.status(401).json({ error: 'Invalid secret' });
+  }
 
   try {
     const guild = client.guilds.cache.get(guildId);

@@ -1,164 +1,219 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const DISCORD_API = 'https://discord.com/api/v10'
+
+const ADMINISTRATOR = 1n << 3n
+const VIEW_CHANNEL = 1n << 10n
+const CONNECT = 1n << 20n
+
+interface DiscordUser {
+  id: string
+  username: string
+  avatar: string | null
+}
+
+interface DiscordGuild {
+  id: string
+  owner_id: string
+}
+
+interface DiscordMember {
+  roles: string[]
+}
+
+interface DiscordRole {
+  id: string
+  permissions: string
+}
+
+interface DiscordChannel {
+  id: string
+  guild_id?: string
+  type: number
+  permission_overwrites?: PermissionOverwrite[]
+}
+
+interface PermissionOverwrite {
+  id: string
+  type: 0 | 1
+  allow: string
+  deny: string
+}
+
+function jsonResponse(hasPermission: boolean, message: string, user?: DiscordUser & { isAdmin: boolean }) {
+  return NextResponse.json(
+    {
+      hasPermission,
+      message,
+      ...(user ? { user } : {})
+    },
+    { status: 200 }
+  )
+}
+
+function parsePermissions(value?: string) {
+  try {
+    return BigInt(value || '0')
+  } catch {
+    return 0n
+  }
+}
+
+async function discordFetch<T>(path: string, token: string, tokenType: 'Bearer' | 'Bot') {
+  const response = await fetch(`${DISCORD_API}${path}`, {
+    headers: {
+      Authorization: `${tokenType} ${token}`
+    },
+    cache: 'no-store'
+  })
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '')
+    throw new Error(`Discord API ${response.status} em ${path}: ${details}`)
+  }
+
+  return response.json() as Promise<T>
+}
+
+function applyOverwrite(base: bigint, overwrite?: PermissionOverwrite) {
+  if (!overwrite) return base
+  const denied = parsePermissions(overwrite.deny)
+  const allowed = parsePermissions(overwrite.allow)
+  return (base & ~denied) | allowed
+}
+
+function calculateChannelPermissions(
+  guildId: string,
+  userId: string,
+  memberRoles: string[],
+  roles: DiscordRole[],
+  overwrites: PermissionOverwrite[] = []
+) {
+  const rolesById = new Map(roles.map((role) => [role.id, role]))
+  let permissions = parsePermissions(rolesById.get(guildId)?.permissions)
+
+  for (const roleId of memberRoles) {
+    permissions |= parsePermissions(rolesById.get(roleId)?.permissions)
+  }
+
+  if ((permissions & ADMINISTRATOR) === ADMINISTRATOR) {
+    return permissions
+  }
+
+  permissions = applyOverwrite(
+    permissions,
+    overwrites.find((overwrite) => overwrite.id === guildId)
+  )
+
+  let roleAllow = 0n
+  let roleDeny = 0n
+  for (const overwrite of overwrites) {
+    if (overwrite.type === 0 && memberRoles.includes(overwrite.id)) {
+      roleAllow |= parsePermissions(overwrite.allow)
+      roleDeny |= parsePermissions(overwrite.deny)
+    }
+  }
+  permissions = (permissions & ~roleDeny) | roleAllow
+
+  permissions = applyOverwrite(
+    permissions,
+    overwrites.find((overwrite) => overwrite.type === 1 && overwrite.id === userId)
+  )
+
+  return permissions
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { guildId, voiceChannelId, accessToken } = await request.json()
+    const body = await request.json()
+    const guildId = String(body.guildId || '').trim()
+    const voiceChannelId = String(body.voiceChannelId || '').trim()
+    const accessToken = String(body.accessToken || '').trim()
+    const botToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN
 
     if (!guildId || !voiceChannelId || !accessToken) {
       return NextResponse.json(
-        { error: 'Parâmetros inválidos' },
+        { error: 'Parametros invalidos', hasPermission: false },
         { status: 400 }
       )
     }
 
-    // Primeiro, obter informações do usuário através do token OAuth
-    const userResponse = await fetch(
-      `https://discord.com/api/v10/users/@me`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
+    if (!botToken) {
+      return jsonResponse(false, 'Token do bot nao configurado no servidor web')
+    }
+
+    const user = await discordFetch<DiscordUser>('/users/@me', accessToken, 'Bearer')
+
+    let guild: DiscordGuild
+    try {
+      guild = await discordFetch<DiscordGuild>(`/guilds/${guildId}`, botToken, 'Bot')
+    } catch (error) {
+      console.error('Erro ao buscar servidor:', error)
+      return jsonResponse(false, 'Bot nao encontrado neste servidor ou token do bot invalido')
+    }
+
+    let channel: DiscordChannel
+    try {
+      channel = await discordFetch<DiscordChannel>(`/channels/${voiceChannelId}`, botToken, 'Bot')
+    } catch (error) {
+      console.error('Erro ao buscar canal:', error)
+      return jsonResponse(false, 'Canal nao encontrado ou inacessivel para o bot')
+    }
+
+    if (channel.guild_id && channel.guild_id !== guildId) {
+      return jsonResponse(false, 'Este canal nao pertence ao servidor informado')
+    }
+
+    if (![2, 13].includes(channel.type)) {
+      return jsonResponse(false, 'Este nao e um canal de voz valido')
+    }
+
+    if (guild.owner_id === user.id) {
+      return jsonResponse(true, 'Acesso permitido (dono do servidor)', {
+        id: user.id,
+        username: user.username,
+        avatar: user.avatar,
+        isAdmin: true
+      })
+    }
+
+    let member: DiscordMember
+    try {
+      member = await discordFetch<DiscordMember>(`/guilds/${guildId}/members/${user.id}`, botToken, 'Bot')
+    } catch (error) {
+      console.error('Erro ao buscar membro:', error)
+      return jsonResponse(false, 'Voce nao e membro deste servidor ou o bot nao consegue ver membros')
+    }
+
+    const roles = await discordFetch<DiscordRole[]>(`/guilds/${guildId}/roles`, botToken, 'Bot')
+    const permissions = calculateChannelPermissions(
+      guildId,
+      user.id,
+      member.roles,
+      roles,
+      channel.permission_overwrites
     )
 
-    if (!userResponse.ok) {
-      return NextResponse.json(
-        { 
-          hasPermission: false, 
-          message: 'Token de acesso inválido' 
-        },
-        { status: 200 }
-      )
+    const isAdmin = (permissions & ADMINISTRATOR) === ADMINISTRATOR
+    const canViewChannel = (permissions & VIEW_CHANNEL) === VIEW_CHANNEL
+    const canConnect = (permissions & CONNECT) === CONNECT
+
+    if (isAdmin || (canViewChannel && canConnect)) {
+      return jsonResponse(true, isAdmin ? 'Acesso permitido (admin)' : 'Acesso permitido', {
+        id: user.id,
+        username: user.username,
+        avatar: user.avatar,
+        isAdmin
+      })
     }
 
-    const user = await userResponse.json()
-
-    // Verificar se o usuário é membro do servidor (usando bot token)
-    const memberResponse = await fetch(
-      `https://discord.com/api/v10/guilds/${guildId}/members/${user.id}`,
-      {
-        headers: {
-          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-        },
-      }
-    )
-
-    if (!memberResponse.ok) {
-      return NextResponse.json(
-        { 
-          hasPermission: false, 
-          message: 'Você não é membro deste servidor' 
-        },
-        { status: 200 }
-      )
-    }
-
-    const member = await memberResponse.json()
-
-    // Verificar permissões do canal
-    const channelResponse = await fetch(
-      `https://discord.com/api/v10/channels/${voiceChannelId}`,
-      {
-        headers: {
-          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-        },
-      }
-    )
-
-    if (!channelResponse.ok) {
-      return NextResponse.json(
-        { 
-          hasPermission: false, 
-          message: 'Canal não encontrado' 
-        },
-        { status: 200 }
-      )
-    }
-
-    const channel = await channelResponse.json()
-
-    // Verificar se é um canal de voz
-    if (channel.type !== 2) { // 2 = canal de voz
-      return NextResponse.json(
-        { 
-          hasPermission: false, 
-          message: 'Este não é um canal de voz válido' 
-        },
-        { status: 200 }
-      )
-    }
-
-    // Verificar se é dono do servidor ou admin
-    const guildResponse = await fetch(
-      `https://discord.com/api/v10/guilds/${guildId}`,
-      {
-        headers: {
-          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-        },
-      }
-    )
-
-    let isOwner = false
-    if (guildResponse.ok) {
-      const guild = await guildResponse.json()
-      isOwner = guild.owner_id === user.id
-    }
-
-    // Verificar se tem permissão de administrador
-    const userPermissions = parseInt(member.permissions || '0')
-    const isAdmin = (userPermissions & 0x00000008) !== 0 // ADMINISTRATOR permission
-
-    // Se for owner ou admin, permitir acesso
-    if (isOwner || isAdmin) {
-      return NextResponse.json(
-        { 
-          hasPermission: true,
-          message: 'Acesso permitido (Admin)',
-          user: {
-            id: user.id,
-            username: user.username,
-            avatar: user.avatar,
-            isAdmin: true
-          }
-        },
-        { status: 200 }
-      )
-    }
-
-    // Verificar permissões específicas do canal
-    const canConnect = (userPermissions & 0x00100000) !== 0 // CONNECT permission
-    const canViewChannel = (userPermissions & 0x00000400) !== 0 // VIEW_CHANNEL permission
-
-    if (canConnect && canViewChannel) {
-      return NextResponse.json(
-        { 
-          hasPermission: true,
-          message: 'Acesso permitido',
-          user: {
-            id: user.id,
-            username: user.username,
-            avatar: user.avatar,
-            isAdmin: false
-          }
-        },
-        { status: 200 }
-      )
-    } else {
-      return NextResponse.json(
-        { 
-          hasPermission: false, 
-          message: 'Você não tem permissão para conectar a este canal de voz' 
-        },
-        { status: 200 }
-      )
-    }
-
+    return jsonResponse(false, 'Voce nao tem permissao para ver e conectar a este canal de voz')
   } catch (error) {
-    console.error('Erro ao verificar permissões:', error)
+    console.error('Erro ao verificar permissoes:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Erro interno do servidor',
-        hasPermission: false 
+        hasPermission: false
       },
       { status: 500 }
     )

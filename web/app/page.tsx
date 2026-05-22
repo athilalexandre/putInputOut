@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import sounds from '../sounds.json'
@@ -23,6 +24,9 @@ interface PlayResponse {
 export default function Home() {
   const { data: session, status: authStatus } = useSession()
   const router = useRouter()
+  const avatarUrl = session?.user?.discordId && session?.user?.avatar
+    ? `https://cdn.discordapp.com/avatars/${session.user.discordId}/${session.user.avatar}.png`
+    : 'https://cdn.discordapp.com/embed/avatars/0.png'
 
   // Estados para configuração do Discord
   const [guildId, setGuildId] = useState('')
@@ -51,6 +55,26 @@ export default function Home() {
   const [deleteUrl, setDeleteUrl] = useState('')
   const [deletePassword, setDeletePassword] = useState('')
 
+  const fetchSounds = async () => {
+    try {
+      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
+      const response = await fetch(`${botEndpoint}/api/sounds`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSoundList(data)
+      } else {
+        setSoundList(sounds)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar sons do bot:', err)
+      setSoundList(sounds)
+    }
+  }
+
   // Verificar autenticação
   useEffect(() => {
     if (authStatus === 'unauthenticated') {
@@ -77,26 +101,6 @@ export default function Home() {
 
     fetchSounds()
   }, [])
-
-  const fetchSounds = async () => {
-    try {
-      const botEndpoint = process.env.NEXT_PUBLIC_BOT_ENDPOINT || 'http://localhost:3001'
-      const response = await fetch(`${botEndpoint}/api/sounds`, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setSoundList(data)
-      } else {
-        setSoundList(sounds)
-      }
-    } catch (err) {
-      console.error('Erro ao buscar sons do bot:', err)
-      setSoundList(sounds)
-    }
-  }
 
   const renameSound = async (url: string, newName: string) => {
     try {
@@ -413,11 +417,13 @@ export default function Home() {
                 <p className="text-[10px] text-discord-grayLighter uppercase font-bold">Logado como</p>
                 <p className="text-sm font-semibold text-white">{session?.user?.username}</p>
               </div>
-              <img
-                src={`https://cdn.discordapp.com/avatars/${session?.user?.discordId}/${session?.user?.avatar}.png`}
+              <Image
+                src={avatarUrl}
                 alt=""
+                width={32}
+                height={32}
+                unoptimized
                 className="w-8 h-8 rounded-full border border-white/10"
-                onError={(e) => (e.currentTarget.src = 'https://cdn.discordapp.com/embed/avatars/0.png')}
               />
               <button
                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
