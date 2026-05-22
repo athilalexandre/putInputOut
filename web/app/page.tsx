@@ -84,14 +84,37 @@ export default function Home() {
     if (quickLink) localStorage.setItem('quickLink', quickLink)
   }, [guildId, voiceChannelId, quickLink])
 
-  // Carregar configurações do localStorage (apenas no mount)
+  // Carregar configurações do localStorage ou da URL (compartilhamento)
   useEffect(() => {
-    const savedGuildId = localStorage.getItem('guildId')
-    const savedVoiceChannelId = localStorage.getItem('voiceChannelId')
-    const savedQuickLink = localStorage.getItem('quickLink')
+    const searchParams = new URLSearchParams(window.location.search)
+    const urlGuildId = searchParams.get('guildId')
+    const urlVoiceChannelId = searchParams.get('voiceChannelId')
 
-    if (savedGuildId) setGuildId(savedGuildId)
-    if (savedVoiceChannelId) setVoiceChannelId(savedVoiceChannelId)
+    let targetGuildId = ''
+    let targetVoiceChannelId = ''
+
+    if (urlGuildId && urlVoiceChannelId) {
+      targetGuildId = urlGuildId
+      targetVoiceChannelId = urlVoiceChannelId
+      localStorage.setItem('guildId', urlGuildId)
+      localStorage.setItem('voiceChannelId', urlVoiceChannelId)
+      
+      // Limpar os parâmetros da URL para ficar limpo
+      const newUrl = window.location.pathname
+      window.history.replaceState({}, '', newUrl)
+      
+      setStatus({ type: 'success', message: '🔌 Conectado ao servidor via link compartilhado!' })
+    } else {
+      const savedGuildId = localStorage.getItem('guildId')
+      const savedVoiceChannelId = localStorage.getItem('voiceChannelId')
+      if (savedGuildId) targetGuildId = savedGuildId
+      if (savedVoiceChannelId) targetVoiceChannelId = savedVoiceChannelId
+    }
+
+    if (targetGuildId) setGuildId(targetGuildId)
+    if (targetVoiceChannelId) setVoiceChannelId(targetVoiceChannelId)
+
+    const savedQuickLink = localStorage.getItem('quickLink')
     if (savedQuickLink) setQuickLink(savedQuickLink)
 
     fetchSounds()
@@ -387,6 +410,19 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-4">
+              {guildId && voiceChannelId && (
+                <button
+                  onClick={() => {
+                    const shareUrl = `${window.location.origin}?guildId=${guildId}&voiceChannelId=${voiceChannelId}`
+                    navigator.clipboard.writeText(shareUrl)
+                    setStatus({ type: 'success', message: '📋 Link de compartilhamento copiado! Envie para seus amigos.' })
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#5865F2]/10 hover:bg-[#5865F2] text-[#5865F2] hover:text-white transition-all text-xs font-bold uppercase tracking-wider border border-[#5865F2]/25"
+                >
+                  🔗 Compartilhar Painel
+                </button>
+              )}
+
               <button
                 onClick={() => setIsHelpOpen(true)}
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-discord-grayLighter hover:text-white transition-all text-xs font-bold uppercase tracking-wider border border-white/5"
