@@ -17,9 +17,8 @@ if (!process.env.DISCORD_TOKEN && fs.existsSync(path.join(process.cwd(), 'env'))
 }
 
 // Configurar FFmpeg (Importante para dependências internas)
-if (ffmpegPath) {
-  process.env.FFMPEG_PATH = ffmpegPath;
-}
+const ffmpegPathResolved = process.platform === 'win32' ? ffmpegPath : 'ffmpeg';
+process.env.FFMPEG_PATH = ffmpegPathResolved;
 
 // Nota: Cookies removidos pois createAgent não está disponível nesta versão
 // Se necessário no futuro, considerar usar yt-dlp como alternativa
@@ -90,7 +89,7 @@ const upload = multer({
 function createLocalResource(filePath) {
   console.log(`💿 Criando resource local (PCM s16le): ${filePath}`);
 
-  const ffmpeg = spawn(ffmpegPath, [
+  const ffmpeg = spawn(ffmpegPathResolved, [
     '-i', filePath,
     '-f', 's16le', // Raw PCM
     '-ac', '2',    // 2 Channels
@@ -166,7 +165,7 @@ async function createStreamResource(url) {
     const ytdlp = spawn(ytdlpPath, args);
 
     // Usar FFmpeg para converter para PCM
-    const ffmpeg = spawn(ffmpegPath, [
+    const ffmpeg = spawn(ffmpegPathResolved, [
       '-i', 'pipe:0',
       '-f', 's16le',
       '-ac', '2',
