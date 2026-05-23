@@ -478,6 +478,30 @@ app.post('/api/sounds/delete', (req, res) => {
   }
 });
 
+// Endpoint para limpar toda a biblioteca de sons (requer senha)
+app.post('/api/sounds/clear', (req, res) => {
+  const { password } = req.body;
+  console.log('🗑️ Clear Library Request');
+
+  // Verificar senha
+  if (password !== DELETE_PASSWORD) {
+    console.log('❌ Senha incorreta para limpar biblioteca');
+    return res.status(401).json({ error: 'Senha incorreta' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    // Escrever lista vazia
+    fs.writeFileSync(p, JSON.stringify([], null, 2));
+
+    console.log('✅ Biblioteca de sons limpa com sucesso');
+    res.json({ success: true, message: 'Biblioteca de sons limpa com sucesso' });
+  } catch (e) {
+    console.error('❌ Erro ao limpar biblioteca:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/join', async (req, res) => {
   const { guildId, voiceChannelId } = req.body;
   console.log(`🔌 Join Request: Guild ${guildId}, Channel ${voiceChannelId}`);
