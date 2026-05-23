@@ -322,6 +322,7 @@ app.post('/api/sounds/upload', upload.single('audio'), (req, res) => {
 
 // Estado do player para cada guild
 const playerState = new Map();
+let activeQueueIndex = 0;
 
 // Endpoint para obter status do player
 app.get('/status/:guildId', (req, res) => {
@@ -478,15 +479,15 @@ app.post('/api/sounds/delete', (req, res) => {
   }
 });
 
-// Endpoint para limpar toda a biblioteca de sons (requer senha)
+// Endpoint para limpar toda a biblioteca de sons (requer confirmação textual)
 app.post('/api/sounds/clear', (req, res) => {
   const { password } = req.body;
   console.log('🗑️ Clear Library Request');
 
-  // Verificar senha
-  if (password !== DELETE_PASSWORD) {
-    console.log('❌ Senha incorreta para limpar biblioteca');
-    return res.status(401).json({ error: 'Senha incorreta' });
+  // Verificar se digitou a palavra de confirmação 'delete'
+  if (password !== 'delete') {
+    console.log('❌ Confirmação inválida para limpar biblioteca');
+    return res.status(401).json({ error: 'Palavra de confirmação incorreta. Digite "delete" para confirmar.' });
   }
 
   const p = path.join(process.cwd(), '../web/sounds.json');
@@ -557,6 +558,148 @@ app.post('/leave', async (req, res) => {
   }
 });
 
+// Função interna de reprodução (reutilizável para Fila/Playlist)
+async function playSoundInternal(guildId, voiceChannelId, soundUrl, volume) {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('Bot não está no servidor');
+
+  const connection = await getOrJoinConnection(guildId, voiceChannelId, guild.voiceAdapterCreator);
+
+  let player = audioPlayers.get(guildId);
+  if (!player) {
+    player = createAudioPlayer();
+    connection.subscribe(player);
+    audioPlayers.set(guildId, player);
+
+    player.on('error', error => {
+      console.error('❌ Player Error:', error.message);
+    });
+
+    player.on(AudioPlayerStatus.Playing, () => {
+      console.log('▶️ Player mudou para: PLAYING');
+    });
+
+    player.on(AudioPlayerStatus.Idle, () => {
+      console.log('⏹️ Player mudou para: IDLE (Música terminada)');
+      // Avançar a fila automaticamente
+      playNextInQueue(guildId, volume);
+    });
+  }
+
+  let resource;
+
+  // Detectar Origem
+  if ((soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be'))) {
+    console.log('🔗 Detectado YouTube');
+    try {
+      resource = await createStreamResource(soundUrl);
+    } catch (e) {
+      console.error('Erro play-dl:', e);
+      throw new Error('Falha ao processar link externo');
+    }
+  } else {
+    // Arquivo Local ou Link Direto
+    const isLocal = !soundUrl.startsWith('http');
+
+    if (isLocal) {
+      let cleanPath = soundUrl.replace(/^"/, '').replace(/"$/, ''); // Limpar aspas se houver
+      console.log(`📂 Arquivo local: ${cleanPath}`);
+      
+      let finalPath = cleanPath;
+      if (!fs.existsSync(finalPath)) {
+        const filename = path.basename(cleanPath);
+        const fallbackPath = path.join(process.cwd(), 'sounds', filename);
+        console.log(`🔍 Arquivo não encontrado no caminho original. Tentando fallback: ${fallbackPath}`);
+        if (fs.existsSync(fallbackPath)) {
+          finalPath = fallbackPath;
+        } else {
+          const webFallbackPath = path.join(process.cwd(), '../web/sounds', filename);
+          console.log(`🔍 Tentando segundo fallback: ${webFallbackPath}`);
+          if (fs.existsSync(webFallbackPath)) {
+            finalPath = webFallbackPath;
+          } else {
+            throw new Error(`Arquivo não encontrado: ${cleanPath}`);
+          }
+        }
+      }
+      
+      resource = createLocalResource(finalPath);
+    } else {
+      console.log('🌐 Link Direto / MyInstants');
+      resource = await resolveAndCreateDirectResource(soundUrl);
+    }
+  }
+
+  if (!resource) throw new Error('Não foi possível gerar o áudio.');
+
+  if (volume !== undefined) resource.volume?.setVolume(Number(volume));
+
+  // Armazenar informações da faixa
+  let trackName = 'Áudio';
+  let source = 'unknown';
+
+  if (soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be')) {
+    trackName = 'YouTube';
+    source = 'youtube';
+  } else if (soundUrl.includes('myinstants.com')) {
+    trackName = 'MyInstants';
+    source = 'myinstants';
+  } else if (!soundUrl.startsWith('http')) {
+    // Arquivo local - extrair nome do arquivo
+    trackName = path.basename(soundUrl).replace(/\.[^/.]+$/, '');
+    source = 'local';
+  } else {
+    trackName = 'Stream Direto';
+    source = 'direct';
+  }
+
+  playerState.set(guildId, {
+    trackName,
+    source,
+    startedAt: Date.now()
+  });
+
+  player.stop(); // Parar atual antes de tocar novo
+  player.play(resource);
+
+  return { success: true, trackName };
+}
+
+// Avançar Fila Automático (Autoplay sequencial infinito)
+async function playNextInQueue(guildId, volume) {
+  const connection = getVoiceConnection(guildId);
+  if (!connection) {
+    console.log(`⏹️ Bot não está em nenhum canal de voz em Guild ${guildId}. Parando fila.`);
+    return;
+  }
+  const voiceChannelId = connection.joinConfig.channelId;
+
+  // Carregar os sons atuais da fila
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  if (!fs.existsSync(p)) return;
+
+  let sounds = [];
+  try {
+    sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) { return; }
+
+  if (sounds.length === 0) {
+    console.log('⏹️ Playlist/Fila vazia.');
+    return;
+  }
+
+  activeQueueIndex = (activeQueueIndex + 1) % sounds.length;
+  console.log(`⏭️ Autoplay: Avançando para faixa ${activeQueueIndex}: ${sounds[activeQueueIndex].name}`);
+
+  try {
+    await playSoundInternal(guildId, voiceChannelId, sounds[activeQueueIndex].url, volume);
+  } catch (error) {
+    console.error('❌ Falha ao tocar música na fila automática. Tentando avançar em 1.5s:', error.message);
+    setTimeout(() => playNextInQueue(guildId, volume), 1500);
+  }
+}
+
+// Endpoint para tocar som direto / customizado
 app.post('/play', async (req, res) => {
   const { guildId, voiceChannelId, soundUrl, volume, secret } = req.body;
   console.log(`🎵 Play: ${soundUrl}`);
@@ -567,110 +710,152 @@ app.post('/play', async (req, res) => {
   }
 
   try {
-    const guild = client.guilds.cache.get(guildId);
-    if (!guild) return res.status(404).json({ error: 'Bot não está no servidor' });
-
-    const connection = await getOrJoinConnection(guildId, voiceChannelId, guild.voiceAdapterCreator);
-
-    let player = audioPlayers.get(guildId);
-    if (!player) {
-      player = createAudioPlayer();
-      connection.subscribe(player);
-      audioPlayers.set(guildId, player);
-
-      player.on('error', error => {
-        console.error('❌ Player Error:', error.message);
-      });
-
-      player.on(AudioPlayerStatus.Playing, () => {
-        console.log('▶️ Player mudou para: PLAYING');
-      });
-
-      player.on(AudioPlayerStatus.Idle, () => {
-        console.log('⏹️ Player mudou para: IDLE');
-      });
+    const playResult = await playSoundInternal(guildId, voiceChannelId, soundUrl, volume);
+    
+    // Sincronizar índice ativo se estiver na playlist
+    const p = path.join(process.cwd(), '../web/sounds.json');
+    if (fs.existsSync(p)) {
+      const sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const idx = sounds.findIndex(s => s.url === soundUrl);
+      if (idx !== -1) activeQueueIndex = idx;
     }
 
-    let resource;
-
-    // Detectar Origem
-    if ((soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be'))) {
-      console.log('🔗 Detectado YouTube');
-      try {
-        resource = await createStreamResource(soundUrl);
-      } catch (e) {
-        console.error('Erro play-dl:', e);
-        throw new Error('Falha ao processar link externo');
-      }
-    } else {
-      // Arquivo Local ou Link Direto
-      const isLocal = !soundUrl.startsWith('http');
-
-      if (isLocal) {
-        let cleanPath = soundUrl.replace(/^"/, '').replace(/"$/, ''); // Limpar aspas se houver
-        console.log(`📂 Arquivo local: ${cleanPath}`);
-        
-        let finalPath = cleanPath;
-        if (!fs.existsSync(finalPath)) {
-          const filename = path.basename(cleanPath);
-          const fallbackPath = path.join(process.cwd(), 'sounds', filename);
-          console.log(`🔍 Arquivo não encontrado no caminho original. Tentando fallback: ${fallbackPath}`);
-          if (fs.existsSync(fallbackPath)) {
-            finalPath = fallbackPath;
-          } else {
-            const webFallbackPath = path.join(process.cwd(), '../web/sounds', filename);
-            console.log(`🔍 Tentando segundo fallback: ${webFallbackPath}`);
-            if (fs.existsSync(webFallbackPath)) {
-              finalPath = webFallbackPath;
-            } else {
-              throw new Error(`Arquivo não encontrado: ${cleanPath}`);
-            }
-          }
-        }
-        
-        resource = createLocalResource(finalPath);
-      } else {
-        console.log('🌐 Link Direto / MyInstants');
-        resource = await resolveAndCreateDirectResource(soundUrl);
-      }
-    }
-
-    if (!resource) throw new Error('Não foi possível gerar o áudio.');
-
-    if (volume) resource.volume?.setVolume(Number(volume));
-
-    // Armazenar informações da faixa
-    let trackName = 'Áudio';
-    let source = 'unknown';
-
-    if (soundUrl.includes('youtube.com') || soundUrl.includes('youtu.be')) {
-      trackName = 'YouTube';
-      source = 'youtube';
-    } else if (soundUrl.includes('myinstants.com')) {
-      trackName = 'MyInstants';
-      source = 'myinstants';
-    } else if (!soundUrl.startsWith('http')) {
-      // Arquivo local - extrair nome do arquivo
-      trackName = path.basename(soundUrl).replace(/\.[^/.]+$/, '');
-      source = 'local';
-    } else {
-      trackName = 'Stream Direto';
-      source = 'direct';
-    }
-
-    playerState.set(guildId, {
-      trackName,
-      source,
-      startedAt: Date.now()
-    });
-
-    player.stop(); // Parar atual antes de tocar novo
-    player.play(resource);
-
-    res.json({ success: true, trackName });
-
+    res.json(playResult);
   } catch (error) {
-    console.error('❌ Erro Fatal no Play:', error);
+    console.error('❌ Erro no Play:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para tocar música por índice específico da Fila/Playlist
+app.post('/api/sounds/play-index', async (req, res) => {
+  const { index, guildId, voiceChannelId, volume } = req.body;
+  console.log(`🎵 Play Index Request: ${index}`);
+
+  if (index === undefined || !guildId || !voiceChannelId) {
+    return res.status(400).json({ error: 'Missing params' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'sounds.json não encontrado' });
+    const sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+
+    const idx = Number(index);
+    if (idx < 0 || idx >= sounds.length) {
+      return res.status(400).json({ error: 'Index out of bounds' });
+    }
+
+    activeQueueIndex = idx;
+    const track = sounds[idx];
+
+    const playResult = await playSoundInternal(guildId, voiceChannelId, track.url, volume);
+    res.json({ success: true, ...playResult });
+  } catch (error) {
+    console.error('❌ Erro no Play Index:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para expandir e adicionar playlists/músicas do YouTube na fila
+app.post('/api/sounds/add-playlist', async (req, res) => {
+  const { url } = req.body;
+  console.log(`📥 Add Playlist Request: ${url}`);
+  if (!url) return res.status(400).json({ error: 'Missing URL' });
+
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  const isPlaylist = url.includes('list=');
+
+  try {
+    let newTracks = [];
+
+    if (isYouTube && isPlaylist) {
+      console.log('🔗 Resolvendo playlist do YouTube via yt-dlp...');
+      // Obter info no formato flat para ser ultra rápido
+      const args = [
+        '--flat-playlist',
+        '--dump-single-json',
+        '--no-warnings',
+        url
+      ];
+
+      const child = spawn(ytdlpPath, args);
+      let stdoutData = '';
+      
+      child.stdout.on('data', data => { stdoutData += data; });
+      child.stderr.on('data', data => { console.log(`yt-dlp error: ${data}`); });
+
+      const exitCode = await new Promise((resolve) => {
+        child.on('close', resolve);
+      });
+
+      if (exitCode !== 0) {
+        throw new Error(`Falha ao ler playlist. Código de saída do yt-dlp: ${exitCode}`);
+      }
+
+      const playlistJson = JSON.parse(stdoutData);
+      if (playlistJson && Array.isArray(playlistJson.entries)) {
+        newTracks = playlistJson.entries.map(entry => {
+          const videoUrl = entry.url || `https://www.youtube.com/watch?v=${entry.id}`;
+          return {
+            name: entry.title || 'Música do YouTube',
+            url: videoUrl
+          };
+        });
+      }
+    } else if (isYouTube) {
+      console.log('🔗 Resolvendo vídeo único do YouTube...');
+      const args = [
+        '--dump-single-json',
+        '--no-warnings',
+        url
+      ];
+
+      const child = spawn(ytdlpPath, args);
+      let stdoutData = '';
+      
+      child.stdout.on('data', data => { stdoutData += data; });
+
+      const exitCode = await new Promise((resolve) => {
+        child.on('close', resolve);
+      });
+
+      if (exitCode === 0) {
+        const videoJson = JSON.parse(stdoutData);
+        newTracks.push({
+          name: videoJson.title || 'Música do YouTube',
+          url: url
+        });
+      } else {
+        newTracks.push({
+          name: 'Link de Vídeo do YouTube',
+          url: url
+        });
+      }
+    } else {
+      // Outros links de áudio direto
+      const name = path.parse(url).name || 'Áudio Customizado';
+      newTracks.push({ name, url });
+    }
+
+    if (newTracks.length === 0) {
+      throw new Error('Nenhuma música pôde ser extraída do link informado.');
+    }
+
+    // Gravar no arquivo sounds.json
+    const p = path.join(process.cwd(), '../web/sounds.json');
+    let sounds = [];
+    if (fs.existsSync(p)) {
+      sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+    }
+    
+    sounds.push(...newTracks);
+    fs.writeFileSync(p, JSON.stringify(sounds, null, 2));
+
+    console.log(`✅ Adicionadas ${newTracks.length} faixas à biblioteca.`);
+    res.json({ success: true, count: newTracks.length, tracks: newTracks });
+  } catch (error) {
+    console.error('❌ Erro ao adicionar playlist:', error);
     res.status(500).json({ error: error.message });
   }
 });
