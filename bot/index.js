@@ -478,6 +478,61 @@ app.post('/api/sounds/delete', (req, res) => {
   }
 });
 
+app.post('/join', async (req, res) => {
+  const { guildId, voiceChannelId } = req.body;
+  console.log(`🔌 Join Request: Guild ${guildId}, Channel ${voiceChannelId}`);
+  if (!guildId || !voiceChannelId) return res.status(400).json({ error: 'Missing params' });
+
+  try {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).json({ error: 'Bot não está no servidor' });
+
+    await getOrJoinConnection(guildId, voiceChannelId, guild.voiceAdapterCreator);
+    res.json({ success: true, message: 'Bot conectado com sucesso' });
+  } catch (error) {
+    console.error('❌ Erro no Join:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/leave', async (req, res) => {
+  const { guildId } = req.body;
+  console.log(`🔌 Leave Request: Guild ${guildId}`);
+  if (!guildId) return res.status(400).json({ error: 'Missing params' });
+
+  try {
+    const connection = getVoiceConnection(guildId);
+    let disconnected = false;
+
+    if (connection) {
+      connection.destroy();
+      disconnected = true;
+    }
+
+    // Fallback: Se a conexão não está em memória, mas o bot está num canal de voz no Discord
+    const guild = client.guilds.cache.get(guildId);
+    if (guild && guild.members.me && guild.members.me.voice.channel) {
+      console.log(`🔌 Desconectando bot via Discord Voice API Fallback`);
+      await guild.members.me.voice.disconnect();
+      disconnected = true;
+    }
+
+    // Limpar estados locais
+    voiceConnections.delete(guildId);
+    audioPlayers.delete(guildId);
+    playerState.delete(guildId);
+
+    if (disconnected) {
+      res.json({ success: true, message: 'Bot desconectado' });
+    } else {
+      res.status(404).json({ error: 'Bot não está em nenhum canal de voz' });
+    }
+  } catch (error) {
+    console.error('❌ Erro no Leave:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/play', async (req, res) => {
   const { guildId, voiceChannelId, soundUrl, volume, secret } = req.body;
   console.log(`🎵 Play: ${soundUrl}`);
