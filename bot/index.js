@@ -757,6 +757,64 @@ app.post('/api/sounds/play-index', async (req, res) => {
   }
 });
 
+// Endpoint para avançar (skip) para a próxima música da fila
+app.post('/api/sounds/next', async (req, res) => {
+  const { guildId, voiceChannelId, volume } = req.body;
+  console.log('⏭️ Skip/Next Request');
+
+  if (!guildId || !voiceChannelId) {
+    return res.status(400).json({ error: 'Missing params' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'sounds.json não encontrado' });
+    const sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+
+    if (sounds.length === 0) {
+      return res.status(400).json({ error: 'Fila vazia' });
+    }
+
+    activeQueueIndex = (activeQueueIndex + 1) % sounds.length;
+    const track = sounds[activeQueueIndex];
+
+    const playResult = await playSoundInternal(guildId, voiceChannelId, track.url, volume);
+    res.json({ success: true, activeQueueIndex, ...playResult });
+  } catch (error) {
+    console.error('❌ Erro no Next:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para voltar (prev) para a música anterior da fila
+app.post('/api/sounds/prev', async (req, res) => {
+  const { guildId, voiceChannelId, volume } = req.body;
+  console.log('⏮️ Previous Request');
+
+  if (!guildId || !voiceChannelId) {
+    return res.status(400).json({ error: 'Missing params' });
+  }
+
+  const p = path.join(process.cwd(), '../web/sounds.json');
+  try {
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'sounds.json não encontrado' });
+    const sounds = JSON.parse(fs.readFileSync(p, 'utf8'));
+
+    if (sounds.length === 0) {
+      return res.status(400).json({ error: 'Fila vazia' });
+    }
+
+    activeQueueIndex = (activeQueueIndex - 1 + sounds.length) % sounds.length;
+    const track = sounds[activeQueueIndex];
+
+    const playResult = await playSoundInternal(guildId, voiceChannelId, track.url, volume);
+    res.json({ success: true, activeQueueIndex, ...playResult });
+  } catch (error) {
+    console.error('❌ Erro no Prev:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint para expandir e adicionar playlists/músicas do YouTube na fila
 app.post('/api/sounds/add-playlist', async (req, res) => {
   const { url } = req.body;
